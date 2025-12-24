@@ -55,33 +55,33 @@
 // ============================================================================
 // GPIO PIN ASSIGNMENTS - All on Port 0
 // ============================================================================
-// Confirmed pins marked with [C], inferred marked with [I]
+// All 16 mappings verified by continuity testing after desoldering E73 module
 
 // Thumb buttons
-#define PIN_BTN_T1      NRF_GPIO_PIN_MAP(0, 0)   // [C] P0.00
-#define PIN_BTN_T2      NRF_GPIO_PIN_MAP(0, 4)   // [I] P0.04
-#define PIN_BTN_T3      NRF_GPIO_PIN_MAP(0, 8)   // [I] P0.08
-#define PIN_BTN_T4      NRF_GPIO_PIN_MAP(0, 13)  // [I] P0.13
+#define PIN_BTN_T1      NRF_GPIO_PIN_MAP(0, 0)   // P0.00 (E73 pin 33)
+#define PIN_BTN_T2      NRF_GPIO_PIN_MAP(0, 4)   // P0.04 (E73 pin 40)
+#define PIN_BTN_T3      NRF_GPIO_PIN_MAP(0, 8)   // P0.08 (E73 pin 38)
+#define PIN_BTN_T4      NRF_GPIO_PIN_MAP(0, 13)  // P0.13 (E73 pin 54)
 
 // Finger Row 1 (index finger)
-#define PIN_BTN_F1L     NRF_GPIO_PIN_MAP(0, 3)   // [C] P0.03
-#define PIN_BTN_F1M     NRF_GPIO_PIN_MAP(0, 2)   // [C] P0.02
-#define PIN_BTN_F1R     NRF_GPIO_PIN_MAP(0, 1)   // [C] P0.01
+#define PIN_BTN_F1L     NRF_GPIO_PIN_MAP(0, 3)   // P0.03 (E73 pin 25)
+#define PIN_BTN_F1M     NRF_GPIO_PIN_MAP(0, 2)   // P0.02 (E73 pin 29)
+#define PIN_BTN_F1R     NRF_GPIO_PIN_MAP(0, 1)   // P0.01 (E73 pin 35)
 
 // Finger Row 2 (middle finger)
-#define PIN_BTN_F2L     NRF_GPIO_PIN_MAP(0, 7)   // [I] P0.07
-#define PIN_BTN_F2M     NRF_GPIO_PIN_MAP(0, 6)   // [I] P0.06
-#define PIN_BTN_F2R     NRF_GPIO_PIN_MAP(0, 5)   // [C] P0.05
+#define PIN_BTN_F2L     NRF_GPIO_PIN_MAP(0, 7)   // P0.07 (E73 pin 22)
+#define PIN_BTN_F2M     NRF_GPIO_PIN_MAP(0, 6)   // P0.06 (E73 pin 36)
+#define PIN_BTN_F2R     NRF_GPIO_PIN_MAP(0, 5)   // P0.05 (E73 pin 37)
 
 // Finger Row 3 (ring finger)
-#define PIN_BTN_F3L     NRF_GPIO_PIN_MAP(0, 12)  // [I] P0.12
-#define PIN_BTN_F3M     NRF_GPIO_PIN_MAP(0, 10)  // [I] P0.10
-#define PIN_BTN_F3R     NRF_GPIO_PIN_MAP(0, 9)   // [I] P0.09
+#define PIN_BTN_F3L     NRF_GPIO_PIN_MAP(0, 12)  // P0.12 (E73 pin 42)
+#define PIN_BTN_F3M     NRF_GPIO_PIN_MAP(0, 10)  // P0.10 (E73 pin 64)
+#define PIN_BTN_F3R     NRF_GPIO_PIN_MAP(0, 9)   // P0.09 (E73 pin 62)
 
 // Finger Row 4 (pinky)
-#define PIN_BTN_F4L     NRF_GPIO_PIN_MAP(0, 20)  // [I] P0.20
-#define PIN_BTN_F4M     NRF_GPIO_PIN_MAP(0, 17)  // [I] P0.17
-#define PIN_BTN_F4R     NRF_GPIO_PIN_MAP(0, 15)  // [I] P0.15
+#define PIN_BTN_F4L     NRF_GPIO_PIN_MAP(0, 20)  // P0.20 (E73 pin 53)
+#define PIN_BTN_F4M     NRF_GPIO_PIN_MAP(0, 17)  // P0.17 (E73 pin 51)
+#define PIN_BTN_F4R     NRF_GPIO_PIN_MAP(0, 15)  // P0.15 (E73 pin 49)
 
 // Button pin array for iteration (indexed by bitmask position)
 #define BUTTON_PINS { \

@@ -194,7 +194,6 @@ With power applied, use multimeter voltage mode:
 
 ## What Remains Unverified
 
-- **11 button GPIO pins** - Mapped via pattern inference (see [GPIO Discovery](03-GPIO_DISCOVERY.md)). To hardware-verify: hot-air desolder module at ~350°C to expose PCB traces for continuity testing
 - R1-R5 resistor functions
 - Q1/Q2 circuit exact purpose (power switch vs level shifter)
 - D1 (main board LED) pin assignment

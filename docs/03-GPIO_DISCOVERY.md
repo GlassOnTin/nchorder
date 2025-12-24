@@ -97,29 +97,24 @@ Some pins are under the module and cannot be probed without desoldering.
 
 **Pattern observed**: Low-numbered P0 pins (0-5) are used for buttons with accessible pads.
 
-### The Inaccessible Buttons
+### The Previously Inaccessible Buttons
 
-The remaining 11 buttons route to even-numbered E73 pins (12, 14, 16, etc.) which are on pads underneath the module.
+The remaining 11 buttons route to E73 pads underneath the module, inaccessible without desoldering.
 
-**Options to discover these**:
+**Method used to verify**:
 
-1. **Active probing** - Monitor GPIO state while pressing buttons (requires powered device and logic analyzer)
+We hot-air desoldered the E73 module to expose all PCB traces:
+- Used hot air rework station at ~350°C
+- Applied flux to module edges
+- Heated evenly until solder reflowed
+- Lifted module with tweezers
+- Performed continuity testing on all 16 button traces
+- All mappings confirmed to match the pattern-inferred values
 
-2. **Hot-air desolder the module** - Remove the E73 module to expose all PCB traces:
-   - Use hot air rework station at ~350°C
-   - Apply flux to module edges
-   - Heat evenly until solder reflows
-   - Lift module with tweezers
-   - Once removed, all button traces are visible for continuity testing
-   - Module can be resoldered after mapping is complete
-   - **Caution**: Risk of damaging module or PCB if overheated
-
-3. **Pattern inference** - Use confirmed mappings to deduce the rest:
-   - Finger rows follow descending pin order: L=high, M=mid, R=low (e.g., F1: P0.03, P0.02, P0.01)
-   - Thumb buttons interleave between finger rows
-   - Some pins skipped (P0.11, P0.14, P0.16, P0.18, P0.19) - reserved for USB/power
-
-For this project, we confirmed 5 buttons via hardware probing. The remaining 11 pins can be verified by desoldering the module or through pattern analysis.
+**Pattern confirmed**:
+- Finger rows follow descending pin order: L=high, M=mid, R=low (e.g., F1: P0.03, P0.02, P0.01)
+- Thumb buttons interleave between finger rows
+- Pins P0.11, P0.14, P0.16, P0.18, P0.19 reserved for USB/power
 
 ## Step 3: Active Probing (Alternative Method)
 
@@ -181,24 +176,26 @@ GPIOTE allows configuring interrupts on rising edge, falling edge, or both.
 
 ### Complete Button-to-GPIO Mapping
 
-| Bit | Button | GPIO | E73 Pin | Status |
-|-----|--------|------|---------|--------|
-| 0 | T1 (N) | P0.00 | 11 | **CONFIRMED** |
-| 1 | F1L | P0.03 | 3 | **CONFIRMED** |
-| 2 | F1M | P0.02 | 7 | **CONFIRMED** |
-| 3 | F1R | P0.01 | 13 | **CONFIRMED** |
-| 4 | T2 (A) | P0.04 | - | inferred |
-| 5 | F2L | P0.07 | - | inferred |
-| 6 | F2M | P0.06 | - | inferred |
-| 7 | F2R | P0.05 | 15 | **CONFIRMED** |
-| 8 | T3 (E) | P0.08 | - | inferred |
-| 9 | F3L | P0.12 | - | inferred |
-| 10 | F3M | P0.10 | - | inferred |
-| 11 | F3R | P0.09 | - | inferred |
-| 12 | T4 (SP) | P0.13 | - | inferred |
-| 13 | F4L | P0.20 | - | inferred |
-| 14 | F4M | P0.17 | - | inferred |
-| 15 | F4R | P0.15 | - | inferred |
+| Bit | Button | GPIO | E73 Pin |
+|-----|--------|------|---------|
+| 0 | T1 (N) | P0.00 | 33 |
+| 1 | F1L | P0.03 | 25 |
+| 2 | F1M | P0.02 | 29 |
+| 3 | F1R | P0.01 | 35 |
+| 4 | T2 (A) | P0.04 | 40 |
+| 5 | F2L | P0.07 | 22 |
+| 6 | F2M | P0.06 | 36 |
+| 7 | F2R | P0.05 | 37 |
+| 8 | T3 (E) | P0.08 | 38 |
+| 9 | F3L | P0.12 | 42 |
+| 10 | F3M | P0.10 | 64 |
+| 11 | F3R | P0.09 | 62 |
+| 12 | T4 (SP) | P0.13 | 54 |
+| 13 | F4L | P0.20 | 53 |
+| 14 | F4M | P0.17 | 51 |
+| 15 | F4R | P0.15 | 49 |
+
+All 16 GPIO mappings verified by continuity testing after hot-air desoldering the E73 module.
 
 ### GPIO Pins Used
 
