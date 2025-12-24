@@ -7,6 +7,8 @@
 #include "fds.h"
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
+#include "app_scheduler.h"
+#include "nrf_pwr_mgmt.h"
 
 /** Flag set when FDS operation completes */
 static volatile bool m_fds_initialized = false;
@@ -90,9 +92,10 @@ ret_code_t nchorder_storage_init(void)
     // Wait for initialization to complete
     while (!m_fds_initialized)
     {
-        // Process pending log messages while waiting
+        // Process pending events while waiting
+        app_sched_execute();
         NRF_LOG_PROCESS();
-        __WFE();
+        nrf_pwr_mgmt_run();
     }
 
     NRF_LOG_INFO("Storage: FDS ready");

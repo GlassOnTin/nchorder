@@ -89,6 +89,7 @@
 #include "nrf_log_default_backends.h"
 
 // Twiddler custom firmware includes
+#include "nchorder_config.h"
 #include "nchorder_buttons.h"
 #include "nchorder_chords.h"
 #include "nchorder_hid.h"
@@ -98,8 +99,8 @@
 
 #define SHIFT_BUTTON_ID                     1                                          /**< Button used as 'SHIFT' Key. */
 
-#define DEVICE_NAME                         "Twiddler4"                                /**< Name of device. Will be included in the advertising data. */
-#define MANUFACTURER_NAME                   "Twiddler Community"                       /**< Manufacturer. Will be passed to Device Information Service. */
+#define DEVICE_NAME                         NCHORDER_DEVICE_NAME                       /**< Name of device. Will be included in the advertising data. */
+#define MANUFACTURER_NAME                   NCHORDER_MANUFACTURER                      /**< Manufacturer. Will be passed to Device Information Service. */
 
 #define APP_BLE_OBSERVER_PRIO               3                                          /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 #define APP_BLE_CONN_CFG_TAG                1                                          /**< A tag identifying the SoftDevice BLE configuration. */
@@ -1636,7 +1637,7 @@ static void advertising_init(void)
     init.advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
     init.advdata.uuids_complete.p_uuids  = m_adv_uuids;
 
-    init.config.ble_adv_whitelist_enabled          = true;
+    init.config.ble_adv_whitelist_enabled          = false;  // Allow discovery by unpaired devices
     init.config.ble_adv_directed_high_duty_enabled = true;
     init.config.ble_adv_directed_enabled           = false;
     init.config.ble_adv_directed_interval          = 0;
@@ -1665,15 +1666,15 @@ static void advertising_init(void)
 static void buttons_leds_init(bool * p_erase_bonds)
 {
     ret_code_t err_code;
-    bsp_event_t startup_event;
 
-    err_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, bsp_event_handler);
+    // Only initialize LEDs via BSP - we use our own button handling (nchorder_buttons)
+    // which conflicts with BSP_INIT_BUTTONS on the same GPIO pins
+    err_code = bsp_init(BSP_INIT_LEDS, bsp_event_handler);
     APP_ERROR_CHECK(err_code);
 
-    err_code = bsp_btn_ble_init(NULL, &startup_event);
-    APP_ERROR_CHECK(err_code);
-
-    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+    // Skip bsp_btn_ble_init since we're not using BSP buttons
+    // Our nchorder_buttons module handles all button input
+    *p_erase_bonds = false;
 }
 
 
@@ -2019,12 +2020,17 @@ static void nchorder_init(void)
     buttons_set_callback(nchorder_button_callback);
 
     // Initialize USB HID (for wired operation)
+    // Note: USB init has SDK assertions that crash on some boards (DK power events)
+#if !defined(BOARD_PCA10056)
     err_code = nchorder_usb_init();
     if (err_code != NRF_SUCCESS)
     {
         NRF_LOG_WARNING("Twiddler: USB init failed: %d (USB disabled)", err_code);
         // Don't fail - USB is optional, BLE still works
     }
+#else
+    NRF_LOG_INFO("Twiddler: USB disabled on DK (use J3 USB port with different firmware for USB HID)");
+#endif
 
     uint16_t key_count = chord_get_mapping_count();
     uint16_t macro_count = chord_get_multichar_count();
@@ -2042,8 +2048,10 @@ static void idle_state_handle(void)
 {
     app_sched_execute();
 
+#if !defined(BOARD_PCA10056)
     // Process USB events (handles USB enumeration, power events, etc.)
     nchorder_usb_process();
+#endif
 
     if (NRF_LOG_PROCESS() == false)
     {

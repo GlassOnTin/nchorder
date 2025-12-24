@@ -48,6 +48,12 @@ static uint16_t read_gpio_state(void)
 
     for (int i = 0; i < NCHORDER_TOTAL_BUTTONS; i++) {
         uint8_t pin = m_button_pins[i];
+
+        // Skip pins on Port 1 (unused/disabled buttons)
+        if (pin >= 32) {
+            continue;
+        }
+
         // Active-low: pin LOW means button pressed
         if (!(port0_state & (1UL << pin))) {
             bitmask |= (1 << i);
@@ -130,11 +136,27 @@ uint32_t buttons_init(void)
     }
 
     // Configure each button pin
+    // Track which pins we've already initialized to avoid duplicates
+    // (e.g., when multiple buttons map to same PIN_UNUSED)
+    uint64_t initialized_pins = 0;
     nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_TOGGLE(false);
     in_config.pull = NRF_GPIO_PIN_PULLUP;
 
     for (int i = 0; i < NCHORDER_TOTAL_BUTTONS; i++) {
         uint8_t pin = m_button_pins[i];
+
+        // Skip pins on Port 1 (unused/disabled buttons on DK)
+        // PIN_UNUSED is on Port 1, real buttons are on Port 0
+        if (pin >= 32) {
+            NRF_LOG_DEBUG("Buttons: Skipping %s (pin %d on Port 1, disabled)", m_button_names[i], pin);
+            continue;
+        }
+
+        // Skip if we already initialized this pin
+        if (initialized_pins & (1ULL << pin)) {
+            NRF_LOG_DEBUG("Buttons: Skipping %s (pin %d already initialized)", m_button_names[i], pin);
+            continue;
+        }
 
         err_code = nrfx_gpiote_in_init(pin, &in_config, gpiote_event_handler);
         if (err_code != NRF_SUCCESS) {
@@ -143,6 +165,7 @@ uint32_t buttons_init(void)
         }
 
         nrfx_gpiote_in_event_enable(pin, true);
+        initialized_pins |= (1ULL << pin);
         NRF_LOG_DEBUG("Buttons: Pin P0.%02d configured for %s", pin, m_button_names[i]);
     }
 

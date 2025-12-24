@@ -23,6 +23,7 @@ Hardware documentation for the Twiddler 4 chording keyboard, useful for custom f
 | GPIO mapping | [03-GPIO_DISCOVERY.md](03-GPIO_DISCOVERY.md) | Button-to-pin mapping |
 | I2C bus | [04-I2C_ANALYSIS.md](04-I2C_ANALYSIS.md) | I2C pins and connected devices |
 | Config format | [06-CONFIG_FORMAT.md](06-CONFIG_FORMAT.md) | Binary configuration file structure |
+| Firmware dev | [07-FIRMWARE_DEVELOPMENT.md](07-FIRMWARE_DEVELOPMENT.md) | Building, flashing, debugging custom firmware |
 
 ## Hardware Summary
 
@@ -57,8 +58,9 @@ Key reference photos:
 
 1. **New to the device?** Start with [01-PRODUCT_OVERVIEW.md](01-PRODUCT_OVERVIEW.md)
 2. **Need hardware details?** See [02-HARDWARE_RE.md](02-HARDWARE_RE.md)
-3. **Building custom firmware?** GPIO mapping in [03-GPIO_DISCOVERY.md](03-GPIO_DISCOVERY.md)
-4. **Working with configs?** Format spec in [06-CONFIG_FORMAT.md](06-CONFIG_FORMAT.md)
+3. **Building custom firmware?** See [07-FIRMWARE_DEVELOPMENT.md](07-FIRMWARE_DEVELOPMENT.md)
+4. **GPIO mapping?** See [03-GPIO_DISCOVERY.md](03-GPIO_DISCOVERY.md)
+5. **Working with configs?** Format spec in [06-CONFIG_FORMAT.md](06-CONFIG_FORMAT.md)
 
 ---
 

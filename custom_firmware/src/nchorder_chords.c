@@ -83,6 +83,12 @@ static uint16_t m_unknown_chords_skipped = 0;
 // Default basic chord mappings (can be overridden by config)
 // Using standard Twiddler TabSpace layout for common letters
 static const chord_mapping_t default_mappings[] = {
+    // Thumb-only buttons (for DK testing - T1=1, T2=2, T3=3, T4=4)
+    {CHORD_T1, 0, HID_KEY_1, 0},  // DK SW1 -> '1'
+    {CHORD_T2, 0, HID_KEY_2, 0},  // DK SW2 -> '2'
+    {CHORD_T3, 0, HID_KEY_3, 0},  // DK SW3 -> '3'
+    {CHORD_T4, 0, HID_KEY_4, 0},  // DK SW4 -> '4'
+
     // Single finger buttons - common letters (row 1 = index, row 2 = middle, etc.)
     {CHORD_F1M, 0, HID_KEY_E, 0},  // Most common letter
     {CHORD_F2M, 0, HID_KEY_T, 0},
