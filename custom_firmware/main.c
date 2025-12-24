@@ -87,6 +87,7 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
+#include "nrf_delay.h"
 
 // Twiddler custom firmware includes
 #include "nchorder_config.h"
@@ -234,6 +235,7 @@ STATIC_ASSERT(sizeof(buffer_list_t) % 4 == 0);
 
 APP_TIMER_DEF(m_battery_timer_id);                                  /**< Battery timer. */
 APP_TIMER_DEF(m_key_sequence_timer_id);                             /**< Timer for multi-char key sequence delays. */
+APP_TIMER_DEF(m_hid_test_timer_id);                                 /**< DEBUG: Timer to test HID send path. */
 
 /** Key sequence state for multi-character macros */
 static const multichar_key_t *m_key_sequence = NULL;                /**< Current key sequence being sent. */
@@ -485,6 +487,36 @@ static void battery_level_meas_timeout_handler(void * p_context)
 }
 
 
+// Forward declaration for HID test
+static void send_single_key(uint8_t modifiers, uint8_t keycode);
+
+/**@brief DEBUG: Timer handler to test HID send path.
+ * Sends a test keystroke every 3 seconds to verify BLE HID is working.
+ */
+static uint8_t m_hid_test_key = HID_KEY_A;
+static void hid_test_timeout_handler(void * p_context)
+{
+    UNUSED_PARAMETER(p_context);
+
+    if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+    {
+        NRF_LOG_INFO("HID TEST: Sending key 0x%02X", m_hid_test_key);
+        send_single_key(0, m_hid_test_key);
+
+        // Cycle through a-z for visibility
+        m_hid_test_key++;
+        if (m_hid_test_key > HID_KEY_Z)
+        {
+            m_hid_test_key = HID_KEY_A;
+        }
+    }
+    else
+    {
+        NRF_LOG_DEBUG("HID TEST: No connection");
+    }
+}
+
+
 /**@brief Timer handler for sending keys in a multi-character sequence.
  *
  * @details Sends the next key in the sequence and schedules the next one if more remain.
@@ -588,6 +620,12 @@ static void timers_init(void)
     err_code = app_timer_create(&m_key_sequence_timer_id,
                                 APP_TIMER_MODE_SINGLE_SHOT,
                                 key_sequence_timeout_handler);
+    APP_ERROR_CHECK(err_code);
+
+    // DEBUG: Create HID test timer
+    err_code = app_timer_create(&m_hid_test_timer_id,
+                                APP_TIMER_MODE_REPEATED,
+                                hid_test_timeout_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -930,6 +968,10 @@ static void timers_start(void)
 
     err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
+
+    // DEBUG: HID test timer disabled (was cycling A-Z every 3 seconds)
+    // err_code = app_timer_start(m_hid_test_timer_id, APP_TIMER_TICKS(3000), NULL);
+    // APP_ERROR_CHECK(err_code);
 }
 
 
@@ -1774,6 +1816,13 @@ static void send_single_key(uint8_t modifiers, uint8_t keycode)
 {
     ret_code_t err_code;
 
+    // DEBUG: Log unexpected keycodes
+    if (keycode == HID_KEY_X) {
+        NRF_LOG_WARNING("DEBUG: Unexpected KEY_X (0x1B) being sent!");
+        // Skip sending 'x' to help debug
+        return;
+    }
+
     // Try USB first (wired connection takes priority)
     if (nchorder_usb_is_connected())
     {
@@ -1823,6 +1872,10 @@ static void send_single_key(uint8_t modifiers, uint8_t keycode)
     {
         NRF_LOG_WARNING("BLE key press send failed: %d", err_code);
     }
+
+    // Small delay to allow BLE stack to send press before queueing release
+    // Without this, the release notification may be dropped (NRF_ERROR_RESOURCES)
+    nrf_delay_ms(10);
 
     // Send key release (all keys up)
     memset(data, 0, sizeof(data));

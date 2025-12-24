@@ -89,6 +89,16 @@ static const chord_mapping_t default_mappings[] = {
     {CHORD_T3, 0, HID_KEY_3, 0},  // DK SW3 -> '3'
     {CHORD_T4, 0, HID_KEY_4, 0},  // DK SW4 -> '4'
 
+    // Multi-button thumb chords (for DK testing)
+    {CHORD_T1 | CHORD_T2, 0, HID_KEY_A, 0},              // SW1+SW2 -> 'A'
+    {CHORD_T1 | CHORD_T3, 0, HID_KEY_B, 0},              // SW1+SW3 -> 'B'
+    {CHORD_T2 | CHORD_T3, 0, HID_KEY_C, 0},              // SW2+SW3 -> 'C'
+    {CHORD_T1 | CHORD_T4, 0, HID_KEY_D, 0},              // SW1+SW4 -> 'D'
+    {CHORD_T2 | CHORD_T4, 0, HID_KEY_E, 0},              // SW2+SW4 -> 'E'
+    {CHORD_T3 | CHORD_T4, 0, HID_KEY_F, 0},              // SW3+SW4 -> 'F'
+    {CHORD_T1 | CHORD_T2 | CHORD_T3, 0, HID_KEY_ENTER, 0},           // SW1+SW2+SW3 -> Enter
+    {CHORD_T1 | CHORD_T2 | CHORD_T3 | CHORD_T4, 0, HID_KEY_SPACE, 0}, // All 4 -> Space
+
     // Single finger buttons - common letters (row 1 = index, row 2 = middle, etc.)
     {CHORD_F1M, 0, HID_KEY_E, 0},  // Most common letter
     {CHORD_F2M, 0, HID_KEY_T, 0},
