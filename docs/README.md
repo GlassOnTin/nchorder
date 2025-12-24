@@ -47,12 +47,12 @@ Key reference photos:
 
 | Photo | Description |
 |-------|-------------|
-| ![Full disassembly](../photos/01_full_disassembly_overview.jpg) | Complete teardown: main PCB, thumb board, battery compartment |
-| ![Main PCB front](../photos/02_main_pcb_front_led_on.jpg) | Main PCB front with U1 module, debug headers J2/J3 |
-| ![U1 module closeup](../photos/04_closeup_u1_module_r3r9_c1c4.jpg) | E73 module close-up with component designators |
-| ![Thumb board](../photos/06_thumb_board_l1l2l3_leds.jpg) | Thumb board with RGB LEDs L1-L3 |
-| ![Back with buttons](../photos/07_back_12_finger_buttons_usbc.jpg) | Back of device showing 12 finger buttons |
-| ![J3 debug header](../photos/17_closeup_j3_pins_c1c4.jpg) | J3 debug header with I2C pins labeled |
+| ![Full disassembly](../photos/twiddler4/01_full_disassembly_overview.jpg) | Complete teardown: main PCB, thumb board, battery compartment |
+| ![Main PCB front](../photos/twiddler4/02_main_pcb_front_led_on.jpg) | Main PCB front with U1 module, debug headers J2/J3 |
+| ![U1 module closeup](../photos/twiddler4/04_closeup_u1_module_r3r9_c1c4.jpg) | E73 module close-up with component designators |
+| ![Thumb board](../photos/twiddler4/06_thumb_board_l1l2l3_leds.jpg) | Thumb board with RGB LEDs L1-L3 |
+| ![Back with buttons](../photos/twiddler4/07_back_12_finger_buttons_usbc.jpg) | Back of device showing 12 finger buttons |
+| ![J3 debug header](../photos/twiddler4/17_closeup_j3_pins_c1c4.jpg) | J3 debug header with I2C pins labeled |
 
 ## Getting Started
 

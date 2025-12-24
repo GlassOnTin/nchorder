@@ -29,7 +29,7 @@ The Twiddler 4 uses:
 
 ### Step 1: Major ICs
 
-![U1 Module closeup](../photos/04_closeup_u1_module_r3r9_c1c4.jpg)
+![U1 Module closeup](../photos/twiddler4/04_closeup_u1_module_r3r9_c1c4.jpg)
 
 The largest component is labeled **U1** - an EByte E73-2G4M08S1C RF module. This module contains:
 - Nordic nRF52840 SoC
@@ -50,7 +50,7 @@ The largest component is labeled **U1** - an EByte E73-2G4M08S1C RF module. This
 
 ### Step 2: Debug Headers
 
-![J3 debug header closeup](../photos/17_closeup_j3_pins_c1c4.jpg)
+![J3 debug header closeup](../photos/twiddler4/17_closeup_j3_pins_c1c4.jpg)
 
 Most consumer devices have debug interfaces for factory programming and testing. These are often left populated.
 
@@ -85,7 +85,7 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 
 ### Step 3: Discrete Components
 
-![Discrete components near U1](../photos/16_closeup_u1_r5r9_area.jpg)
+![Discrete components near U1](../photos/twiddler4/16_closeup_u1_r5r9_area.jpg)
 
 | Designator | Component | Value | Purpose |
 |------------|-----------|-------|---------|
@@ -168,7 +168,7 @@ With power disconnected, use multimeter continuity mode to trace connections:
 
 ### Visual Tracing
 
-![PCB traces near U1](../photos/15_closeup_u1_d1_r1r5_c1c4.jpg)
+![PCB traces near U1](../photos/twiddler4/15_closeup_u1_d1_r1r5_c1c4.jpg)
 
 - Follow copper traces from pad to pad
 - Look for vias (small holes) that route to other layers

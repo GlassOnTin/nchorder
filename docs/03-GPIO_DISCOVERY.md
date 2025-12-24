@@ -10,7 +10,7 @@ The Twiddler 4 has 16 buttons:
 - 4 thumb buttons: T1 (N), T2 (A), T3 (E), T4 (SP)
 - 12 finger buttons: 4 rows × 3 columns (Left, Middle, Right)
 
-![Back of device showing finger buttons](../photos/07_back_12_finger_buttons_usbc.jpg)
+![Back of device showing finger buttons](../photos/twiddler4/07_back_12_finger_buttons_usbc.jpg)
 
 **Question**: Which nRF52840 GPIO pin connects to each button?
 
@@ -70,7 +70,7 @@ With power disconnected:
 
 ### Identifying E73 Module Pads
 
-![E73 module closeup showing edge pads](../photos/04_closeup_u1_module_r3r9_c1c4.jpg)
+![E73 module closeup showing edge pads](../photos/twiddler4/04_closeup_u1_module_r3r9_c1c4.jpg)
 
 The E73 module has edge pads that are accessible for probing. From the pinout table:
 - Odd-numbered pins (1, 3, 5, etc.) are on one edge

@@ -47,7 +47,7 @@ This is a reminder to never assume "typical" pin assignments. Always verify agai
 
 ## Step 2: J3 Header Analysis
 
-![J3 debug header closeup](../photos/17_closeup_j3_pins_c1c4.jpg)
+![J3 debug header closeup](../photos/twiddler4/17_closeup_j3_pins_c1c4.jpg)
 
 The J3 debug header exposes several GPIO pins. If the designers wanted to provide I2C access for debugging, they would route it here.
 
