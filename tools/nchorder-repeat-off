@@ -1,0 +1,20 @@
+#!/bin/bash
+# Disable key repeat for Twiddler keyboard
+# The kernel enables key repeat by default, but the Twiddler
+# handles chording and doesn't need OS-level repeat
+
+# Find the Twiddler Keyboard event device
+for dev in /dev/input/event*; do
+    name=$(cat /sys/class/input/$(basename $dev)/device/name 2>/dev/null)
+    if [[ "$name" == "Tek Gear Twiddler Keyboard" ]]; then
+        # Disable repeat by setting delay=0, period=0 via EVIOCSREP ioctl
+        python3 -c "
+import fcntl, struct
+EVIOCSREP = 0x40084503
+fd = open('$dev', 'wb')
+fcntl.ioctl(fd, EVIOCSREP, struct.pack('ii', 0, 0))
+fd.close()
+print('Disabled key repeat for $dev')
+" 2>/dev/null
+    fi
+done

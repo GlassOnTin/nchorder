@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Nordic SDK (large, download separately)
+sdk/
+
+# Build artifacts
+custom_firmware/**/_build/
+**/*.o
+**/*.d
+
+# Logs and local files
+*.log
+
+# Local notes
+CLAUDE.md

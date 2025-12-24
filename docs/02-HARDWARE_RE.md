@@ -1,0 +1,211 @@
+# Hardware Reverse Engineering
+
+[← Back to Index](README.md) | [Previous: Product Overview](01-PRODUCT_OVERVIEW.md)
+
+This section covers the methodology for analyzing the Twiddler 4 PCB - identifying components, understanding the circuit, and documenting findings.
+
+## Methodology Overview
+
+Hardware reverse engineering follows a systematic approach:
+
+1. **Document the device unopened** - Photos, measurements, visible labels
+2. **Open carefully** - Non-destructive if possible, document how
+3. **Photograph everything** - Multiple angles, before touching anything
+4. **Identify major ICs** - Part numbers, datasheets
+5. **Find debug interfaces** - JTAG, SWD, UART headers
+6. **Trace connections** - Multimeter continuity, visual inspection
+7. **Power analysis** - Voltage rails, power sequencing
+
+## Opening the Device
+
+The Twiddler 4 uses:
+- 6 Phillips head screws on the exterior case
+- Internal screws holding PCB to housing
+- FFC cable connecting thumb board to main PCB
+
+**Tip**: Before removing any cables, photograph their orientation. FFC cables in particular can be inserted backwards.
+
+## Component Identification
+
+### Step 1: Major ICs
+
+![U1 Module closeup](../photos/04_closeup_u1_module_r3r9_c1c4.jpg)
+
+The largest component is labeled **U1** - an EByte E73-2G4M08S1C RF module. This module contains:
+- Nordic nRF52840 SoC
+- Crystal oscillator
+- RF matching network
+- Ceramic antenna
+
+**How we identified it**:
+1. Read silkscreen markings on the module
+2. Module has "tek gear" branding but form factor matches E73
+3. Cross-referenced with [E73 datasheet](https://www.cdebyte.com/products/E73-2G4M08S1C)
+
+**Why use a module instead of bare nRF52840?**
+- RF design is difficult - matching network, antenna placement
+- Module is pre-certified (FCC, CE)
+- Faster time to market
+- Trade-off: Higher cost, less flexibility
+
+### Step 2: Debug Headers
+
+![J3 debug header closeup](../photos/17_closeup_j3_pins_c1c4.jpg)
+
+Most consumer devices have debug interfaces for factory programming and testing. These are often left populated.
+
+**J2 - SWD Debug Header** (4 pins):
+
+| Pin | Signal | Purpose |
+|-----|--------|---------|
+| 1 | VDD | 3.3V power (can power debugger) |
+| 2 | GND | Ground reference |
+| 3 | SWCLK | Debug clock (from debugger) |
+| 4 | SWDIO | Bidirectional debug data |
+
+SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link adapter, you can:
+- Read/write flash memory
+- Set breakpoints
+- Single-step through code
+- Inspect registers and RAM
+
+**J3 - Extended Debug Header** (7 pins):
+
+| Pin | Signal | Function |
+|-----|--------|----------|
+| 1 | VDD | 3.3V power |
+| 2 | P0.31 | GPIO (likely I2C SCL) |
+| 3 | P0.30 | GPIO (likely I2C SDA) |
+| 4 | GND | Ground |
+| 5 | P0.28 | GPIO / ADC |
+| 6 | P1.09 | GPIO |
+| 7 | VDH | Battery voltage |
+
+**Oscilloscope observations on P0.30/P0.31**: Both lines idle high at 3.3V with regular pulses dropping to 0V. This is consistent with I2C (open-drain with pull-ups), but data patterns were not decoded to confirm.
+
+### Step 3: Discrete Components
+
+![Discrete components near U1](../photos/16_closeup_u1_r5r9_area.jpg)
+
+| Designator | Component | Value | Purpose |
+|------------|-----------|-------|---------|
+| R1 | Resistor | 2KΩ | Unknown |
+| R2 | Resistor | 560Ω | Unknown |
+| R3 | Resistor | 180Ω | Unknown |
+| R4 | Resistor | 10Ω | Current sense? |
+| R5 | Resistor | 10Ω | Current sense? |
+| R6 | Resistor | 1KΩ | Q2 base resistor |
+| R7 | Resistor | 1KΩ | Q1 base resistor |
+| Q1 | Transistor | PNP | Power switch |
+| Q2 | Transistor | NPN | Power switch |
+
+**Identifying transistor type**: Use multimeter diode mode:
+- PNP: Base-emitter and base-collector both show ~0.6V drop (base positive)
+- NPN: Same, but base is the negative lead
+
+**The Q1/Q2 Circuit**: Q1 (PNP) and Q2 (NPN) form a complementary pair, likely acting as a power switch. Q2's output connects to Q1's base, allowing a logic-level GPIO to control a higher-current load.
+
+### Step 4: Connectors
+
+| Designator | Type | Purpose |
+|------------|------|---------|
+| J1 | USB-C | Charging and data |
+| J2 | Header | SWD debug |
+| J3 | Header | Extended debug (I2C exposed) |
+| J6 | FFC | 12-pin connection to thumb board |
+
+**J6 FFC Pinout** (12 pins):
+- 4 pins: Thumb button GPIO lines
+- 2 pins: I2C (SDA, SCL) for touchpad
+- 1 pin: I2S data for RGB LEDs
+- 2 pins: Power (VCC, GND)
+- 3 pins: Unknown/reserved
+
+## E73-2G4M08S1C Module Pinout
+
+The E73 module exposes most nRF52840 GPIO pins on edge pads. This pinout is essential for tracing PCB connections.
+
+**Source**: [jmgao/E73-2G4M08S1C KiCad library](https://github.com/jmgao/E73-2G4M08S1C)
+
+| Pin | GPIO | Function |   | Pin | GPIO | Function |
+|-----|------|----------|---|-----|------|----------|
+| 23 | P1.11 | GPIO |   | 44 | VDDH | Power |
+| 24 | P1.10 | GPIO |   | 45 | GND | Ground |
+| 25 | P0.03 | GPIO/ADC |   | 46 | DCCH | DC-DC |
+| 26 | P0.28 | GPIO/ADC |   | 47 | P0.18 | RESET |
+| 27 | GND | Ground |   | 48 | VBUS | USB power |
+| 28 | P1.13 | GPIO |   | 49 | P0.15 | USB D- |
+| 29 | P0.02 | GPIO/ADC |   | 50 | D- | USB D- |
+| 30 | P0.29 | GPIO/ADC |   | 51 | P0.17 | QSPI CS |
+| 31 | P0.31 | GPIO/ADC |   | 52 | D+ | USB D+ |
+| 32 | P0.30 | GPIO/ADC |   | 53 | P0.20 | QSPI CLK |
+| 33 | P0.00 | XTAL/GPIO |   | 54 | P0.13 | GPIO |
+| 34 | P0.26 | GPIO |   | 55 | P0.22 | QSPI DIO |
+| 35 | P0.01 | XTAL/GPIO |   | 56 | P0.24 | QSPI DIO |
+| 36 | P0.06 | GPIO |   | 57 | P1.00 | GPIO |
+| 37 | P0.05 | GPIO/ADC |   | 58 | SWDIO | Debug |
+| 38 | P0.08 | GPIO |   | 59 | P1.02 | GPIO |
+| 39 | P1.09 | GPIO |   | 60 | SWDCLK | Debug |
+| 40 | P0.04 | GPIO/ADC |   | 61 | P1.04 | GPIO |
+| 41 | VDD | Power |   | 62 | P0.09 | GPIO/NFC |
+| 42 | P0.12 | GPIO |   | 63 | P1.06 | GPIO |
+| 43 | GND | Ground |   | 64 | P0.10 | GPIO/NFC |
+| 22 | P0.07 | GPIO |   |   |   |   |
+
+**Key observation**: P0.27 (typical I2C SCL) is NOT exposed on this module. This forced the Twiddler designers to use alternative pins for I2C.
+
+## PCB Tracing Techniques
+
+### Continuity Testing
+
+With power disconnected, use multimeter continuity mode to trace connections:
+
+1. Place one probe on a known pin (e.g., E73 module pad)
+2. Probe suspected connection points
+3. Beep = connection, no beep = no connection
+
+**Tip**: Ground planes will beep with many points. Check resistance - true connections show near-zero ohms, ground plane connections may show slightly higher.
+
+### Visual Tracing
+
+![PCB traces near U1](../photos/15_closeup_u1_d1_r1r5_c1c4.jpg)
+
+- Follow copper traces from pad to pad
+- Look for vias (small holes) that route to other layers
+- Silkscreen labels often hint at function
+
+### Power-On Testing
+
+With power applied, use multimeter voltage mode:
+- Verify power rails (3.3V, VBUS, VDH)
+- Check idle state of GPIO (high = pull-up, low = pull-down)
+- I2C lines should idle high (~3.3V)
+
+## Peripheral Usage Summary
+
+| Peripheral | Base Address | Purpose |
+|------------|--------------|---------|
+| USBD | 0x40027000 | USB HID + Mass Storage |
+| GPIO P0/P1 | 0x50000000 | Direct button inputs |
+| TWI0 | 0x40003000 | Touchpad I2C |
+| GPIOTE | 0x40006000 | Button interrupts |
+| I2S | 0x40025000 | RGB LED data (WS2812) |
+| SAADC | 0x40007000 | Battery monitoring |
+
+## What Remains Unverified
+
+- **11 button GPIO pins** - Mapped via pattern inference (see [GPIO Discovery](03-GPIO_DISCOVERY.md)). To hardware-verify: hot-air desolder module at ~350°C to expose PCB traces for continuity testing
+- R1-R5 resistor functions
+- Q1/Q2 circuit exact purpose (power switch vs level shifter)
+- D1 (main board LED) pin assignment
+- L1-L3 RGB LED data pin - routed through FFC J6 to thumb board
+
+## Key Lessons
+
+1. **Debug headers are your friend** - Check for unpopulated pads that could be JTAG/SWD
+2. **Modules simplify design** - Look up module datasheets for pinouts
+3. **Document as you go** - Photos and notes save time later
+
+---
+
+[← Back to Index](README.md) | [Next: GPIO Discovery →](03-GPIO_DISCOVERY.md)

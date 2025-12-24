@@ -1,0 +1,388 @@
+{
+  "chords": [
+    {
+      "chord": "N LOOO",
+      "key": "7"
+    },
+    {
+      "chord": "N MOOO",
+      "key": "8"
+    },
+    {
+      "chord": "N ROOO",
+      "key": "9"
+    },
+    {
+      "chord": "NA LOOO",
+      "key": "f1"
+    },
+    {
+      "chord": "NA MOOO",
+      "key": "f5"
+    },
+    {
+      "chord": "NA ROOO",
+      "key": "f9"
+    },
+    {
+      "chord": "N OLOO",
+      "key": "4"
+    },
+    {
+      "chord": "LLOO",
+      "key": "x"
+    },
+    {
+      "chord": "N LLOO",
+      "key": "/"
+    },
+    {
+      "chord": "MLOO",
+      "key": "l"
+    },
+    {
+      "chord": "RLOO",
+      "key": "q"
+    },
+    {
+      "chord": "NA OLOO",
+      "key": "f2"
+    },
+    {
+      "chord": "N OMOO",
+      "key": "5"
+    },
+    {
+      "chord": "LMOO",
+      "key": "i"
+    },
+    {
+      "chord": "MMOO",
+      "key": " "
+    },
+    {
+      "chord": "N MMOO",
+      "key": "+"
+    },
+    {
+      "chord": "RMOO",
+      "key": "s"
+    },
+    {
+      "chord": "NA OMOO",
+      "key": "f6"
+    },
+    {
+      "chord": "N OROO",
+      "key": "6"
+    },
+    {
+      "chord": "LROO",
+      "key": "v"
+    },
+    {
+      "chord": "MROO",
+      "key": "e"
+    },
+    {
+      "chord": "RROO",
+      "key": "b"
+    },
+    {
+      "chord": "N RROO",
+      "key": "*"
+    },
+    {
+      "chord": "NA OROO",
+      "key": "f10"
+    },
+    {
+      "chord": "N OOLO",
+      "key": "1"
+    },
+    {
+      "chord": "LOLO",
+      "key": "f"
+    },
+    {
+      "chord": "MOLO",
+      "key": "r"
+    },
+    {
+      "chord": "ROLO",
+      "key": "u"
+    },
+    {
+      "chord": "NA OOLO",
+      "key": "f3"
+    },
+    {
+      "chord": "OLLO",
+      "key": "p"
+    },
+    {
+      "chord": "N OLLO",
+      "key": "="
+    },
+    {
+      "chord": "OMLO",
+      "key": "o"
+    },
+    {
+      "chord": "ORLO",
+      "key": "m"
+    },
+    {
+      "chord": "MRLO",
+      "key": "left"
+    },
+    {
+      "chord": "N OOMO",
+      "key": "2"
+    },
+    {
+      "chord": "LOMO",
+      "key": "c"
+    },
+    {
+      "chord": "MOMO",
+      "key": "a"
+    },
+    {
+      "chord": "ROMO",
+      "key": "w"
+    },
+    {
+      "chord": "NA OOMO",
+      "key": "f7"
+    },
+    {
+      "chord": "OLMO",
+      "key": "y"
+    },
+    {
+      "chord": "OMMO",
+      "key": "t"
+    },
+    {
+      "chord": "N OMMO",
+      "key": "-"
+    },
+    {
+      "chord": "ORMO",
+      "key": "h"
+    },
+    {
+      "chord": "MRMO",
+      "key": "up"
+    },
+    {
+      "chord": "N OORO",
+      "key": "3"
+    },
+    {
+      "chord": "LORO",
+      "key": "k"
+    },
+    {
+      "chord": "MORO",
+      "key": "d"
+    },
+    {
+      "chord": "RORO",
+      "key": "j"
+    },
+    {
+      "chord": "NA OORO",
+      "key": "f11"
+    },
+    {
+      "chord": "OLRO",
+      "key": "z"
+    },
+    {
+      "chord": "OMRO",
+      "key": "n"
+    },
+    {
+      "chord": "ORRO",
+      "key": "g"
+    },
+    {
+      "chord": "MRRO",
+      "key": "right"
+    },
+    {
+      "chord": "N OOOL",
+      "key": "0"
+    },
+    {
+      "chord": "LOOL",
+      "key": "{"
+    },
+    {
+      "chord": "ROOL",
+      "key": "}"
+    },
+    {
+      "chord": "NA OOOL",
+      "key": "f4"
+    },
+    {
+      "chord": "MMOL",
+      "key": "enter"
+    },
+    {
+      "chord": "OROL",
+      "key": "#"
+    },
+    {
+      "chord": "MROL",
+      "key": "pageup"
+    },
+    {
+      "chord": "LOLL",
+      "key": "capslock"
+    },
+    {
+      "chord": "LLLL",
+      "key": "numlock"
+    },
+    {
+      "chord": "MRLL",
+      "key": "home"
+    },
+    {
+      "chord": "OOML",
+      "key": "\""
+    },
+    {
+      "chord": "MRML",
+      "key": "esc"
+    },
+    {
+      "chord": "OORL",
+      "key": "@"
+    },
+    {
+      "chord": "N OOOM",
+      "key": "."
+    },
+    {
+      "chord": "LOOM",
+      "key": "("
+    },
+    {
+      "chord": "ROOM",
+      "key": ")"
+    },
+    {
+      "chord": "NA OOOM",
+      "key": "f8"
+    },
+    {
+      "chord": "OLOM",
+      "key": "["
+    },
+    {
+      "chord": "OMOM",
+      "key": "'"
+    },
+    {
+      "chord": "MMOM",
+      "key": "backspace"
+    },
+    {
+      "chord": "OROM",
+      "key": "]"
+    },
+    {
+      "chord": "MROM",
+      "key": "down"
+    },
+    {
+      "chord": "OOLM",
+      "key": "<"
+    },
+    {
+      "chord": "OORM",
+      "key": ">"
+    },
+    {
+      "chord": "S OMOM",
+      "key": "`"
+    },
+    {
+      "chord": "N OOOR",
+      "key": "enter"
+    },
+    {
+      "chord": "LOOR",
+      "key": "&"
+    },
+    {
+      "chord": "MOOR",
+      "key": "*"
+    },
+    {
+      "chord": "ROOR",
+      "key": "+"
+    },
+    {
+      "chord": "NA OOOR",
+      "key": "f12"
+    },
+    {
+      "chord": "OLOR",
+      "key": "|"
+    },
+    {
+      "chord": "OMOR",
+      "key": "/"
+    },
+    {
+      "chord": "MMOR",
+      "key": "delete"
+    },
+    {
+      "chord": "OROR",
+      "key": "-"
+    },
+    {
+      "chord": "MROR",
+      "key": "pagedown"
+    },
+    {
+      "chord": "OOLR",
+      "key": "^"
+    },
+    {
+      "chord": "OOMR",
+      "key": "%"
+    },
+    {
+      "chord": "MRMR",
+      "key": "tab"
+    },
+    {
+      "chord": "OORR",
+      "key": "="
+    },
+    {
+      "chord": "LRRR",
+      "key": "insert"
+    },
+    {
+      "chord": "MRRR",
+      "key": "end"
+    },
+    {
+      "chord": "S OMOR",
+      "key": "\\"
+    },
+    {
+      "chord": "S OROR",
+      "key": "_"
+    }
+  ]
+}
