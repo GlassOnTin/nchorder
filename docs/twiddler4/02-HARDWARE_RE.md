@@ -29,7 +29,7 @@ The Twiddler 4 uses:
 
 ### Step 1: Major ICs
 
-![U1 Module closeup](../photos/twiddler4/04_closeup_u1_module_r3r9_c1c4.jpg)
+![U1 Module closeup](../../photos/twiddler4/04_closeup_u1_module_r3r9_c1c4.jpg)
 
 The largest component is labeled **U1** - an EByte E73-2G4M08S1C RF module. This module contains:
 - Nordic nRF52840 SoC
@@ -50,18 +50,20 @@ The largest component is labeled **U1** - an EByte E73-2G4M08S1C RF module. This
 
 ### Step 2: Debug Headers
 
-![J3 debug header closeup](../photos/twiddler4/17_closeup_j3_pins_c1c4.jpg)
+![J3 debug header closeup](../../photos/twiddler4/17_closeup_j3_pins_c1c4.jpg)
 
 Most consumer devices have debug interfaces for factory programming and testing. These are often left populated.
 
 **J2 - SWD Debug Header** (4 pins):
 
-| Pin | Signal | Purpose |
-|-----|--------|---------|
-| 1 | VDD | 3.3V power (can power debugger) |
-| 2 | GND | Ground reference |
-| 3 | SWCLK | Debug clock (from debugger) |
-| 4 | SWDIO | Bidirectional debug data |
+| Pin | Signal | E73 Pin | Purpose |
+|-----|--------|---------|---------|
+| 1 | VDD | 19 | Power supply |
+| 2 | GND | 21 | Ground reference |
+| 3 | SWDCLK | 39 (SWC) | Debug clock (from debugger) |
+| 4 | SWDIO | 37 (SWD) | Bidirectional debug data |
+
+**Note**: E73 pin 26 (RST) provides hardware reset - hold low to keep chip in reset state during SWD operations.
 
 SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link adapter, you can:
 - Read/write flash memory
@@ -85,7 +87,7 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 
 ### Step 3: Discrete Components
 
-![Discrete components near U1](../photos/twiddler4/16_closeup_u1_r5r9_area.jpg)
+![Discrete components near U1](../../photos/twiddler4/16_closeup_u1_r5r9_area.jpg)
 
 | Designator | Component | Value | Purpose |
 |------------|-----------|-------|---------|
@@ -125,32 +127,58 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 
 The E73 module exposes most nRF52840 GPIO pins on edge pads. This pinout is essential for tracing PCB connections.
 
-**Source**: [jmgao/E73-2G4M08S1C KiCad library](https://github.com/jmgao/E73-2G4M08S1C)
+**Source**: [Ebyte E73-2G4M08S1C User Manual v1.9](https://www.cdebyte.com/products/E73-2G4M08S1C)
 
-| Pin | GPIO | Function |   | Pin | GPIO | Function |
-|-----|------|----------|---|-----|------|----------|
-| 23 | P1.11 | GPIO |   | 44 | VDDH | Power |
-| 24 | P1.10 | GPIO |   | 45 | GND | Ground |
-| 25 | P0.03 | GPIO/ADC |   | 46 | DCCH | DC-DC |
-| 26 | P0.28 | GPIO/ADC |   | 47 | P0.18 | RESET |
-| 27 | GND | Ground |   | 48 | VBUS | USB power |
-| 28 | P1.13 | GPIO |   | 49 | P0.15 | USB D- |
-| 29 | P0.02 | GPIO/ADC |   | 50 | D- | USB D- |
-| 30 | P0.29 | GPIO/ADC |   | 51 | P0.17 | QSPI CS |
-| 31 | P0.31 | GPIO/ADC |   | 52 | D+ | USB D+ |
-| 32 | P0.30 | GPIO/ADC |   | 53 | P0.20 | QSPI CLK |
-| 33 | P0.00 | XTAL/GPIO |   | 54 | P0.13 | GPIO |
-| 34 | P0.26 | GPIO |   | 55 | P0.22 | QSPI DIO |
-| 35 | P0.01 | XTAL/GPIO |   | 56 | P0.24 | QSPI DIO |
-| 36 | P0.06 | GPIO |   | 57 | P1.00 | GPIO |
-| 37 | P0.05 | GPIO/ADC |   | 58 | SWDIO | Debug |
-| 38 | P0.08 | GPIO |   | 59 | P1.02 | GPIO |
-| 39 | P1.09 | GPIO |   | 60 | SWDCLK | Debug |
-| 40 | P0.04 | GPIO/ADC |   | 61 | P1.04 | GPIO |
-| 41 | VDD | Power |   | 62 | P0.09 | GPIO/NFC |
-| 42 | P0.12 | GPIO |   | 63 | P1.06 | GPIO |
-| 43 | GND | Ground |   | 64 | P0.10 | GPIO/NFC |
-| 22 | P0.07 | GPIO |   |   |   |   |
+| Pin | Name | nRF52840 Pin | Function |
+|-----|------|--------------|----------|
+| 1 | P1.11 | P1.11 | GPIO |
+| 2 | P1.10 | P1.10 | GPIO |
+| 3 | P0.03 | P0.03/AIN1 | GPIO/ADC |
+| 4 | AI4 | P0.28/AIN4 | GPIO/ADC |
+| 5 | GND | - | Ground |
+| 6 | P1.13 | P1.13 | GPIO |
+| 7 | AI0 | P0.02/AIN0 | GPIO/ADC |
+| 8 | AI5 | P0.29/AIN5 | GPIO/ADC |
+| 9 | AI7 | P0.31/AIN7 | GPIO/ADC |
+| 10 | AI6 | P0.30/AIN6 | GPIO/ADC |
+| 11 | XL1 | P0.00/XL1 | 32.768kHz crystal |
+| 12 | P0.26 | P0.26 | GPIO |
+| 13 | XL2 | P0.01/XL2 | 32.768kHz crystal |
+| 14 | P0.06 | P0.06 | GPIO |
+| 15 | AI3 | P0.05/AIN3 | GPIO/ADC |
+| 16 | P0.08 | P0.08 | GPIO |
+| 17 | P1.09 | P1.09 | GPIO |
+| 18 | AI2 | P0.04/AIN2 | GPIO/ADC |
+| 19 | VDD | - | Power supply (1.7-3.6V) |
+| 20 | P12 | P0.12 | GPIO |
+| 21 | GND | - | Ground |
+| 22 | P0.07 | P0.07 | GPIO |
+| 23 | VDH | VDDH | High-voltage supply (1.7-5.5V) |
+| 24 | GND | - | Ground |
+| 25 | DCH | DCCH | DC/DC converter output |
+| 26 | RST | P0.18/RESET | **Reset (active low)** |
+| 27 | VBS | VBUS | USB 5V input |
+| 28 | P15 | P0.15 | GPIO |
+| 29 | D- | D- | USB D- |
+| 30 | P17 | P0.17 | GPIO |
+| 31 | D+ | D+ | USB D+ |
+| 32 | P0.20 | P0.20 | GPIO |
+| 33 | P0.13 | P0.13 | GPIO |
+| 34 | P0.22 | P0.22 | GPIO/QSPI |
+| 35 | P0.24 | P0.24 | GPIO/QSPI |
+| 36 | P1.00 | P1.00 | GPIO |
+| 37 | SWD | SWDIO | **Debug data** |
+| 38 | P1.02 | P1.02 | GPIO |
+| 39 | SWC | SWDCLK | **Debug clock** |
+| 40 | P1.04 | P1.04 | GPIO |
+| 41 | NF1 | P0.09/NFC1 | GPIO/NFC |
+| 42 | P1.06 | P1.06 | GPIO |
+| 43 | NF2 | P0.10/NFC2 | GPIO/NFC |
+
+**Key pins for debugging:**
+- Pin 26 (RST): Reset, directly mapped to P0.18/RESET - hold low to keep chip in reset
+- Pin 37 (SWD): SWDIO data line
+- Pin 39 (SWC): SWDCLK clock line
 
 **Key observation**: P0.27 (typical I2C SCL) is NOT exposed on this module. This forced the Twiddler designers to use alternative pins for I2C.
 
@@ -168,7 +196,7 @@ With power disconnected, use multimeter continuity mode to trace connections:
 
 ### Visual Tracing
 
-![PCB traces near U1](../photos/twiddler4/15_closeup_u1_d1_r1r5_c1c4.jpg)
+![PCB traces near U1](../../photos/twiddler4/15_closeup_u1_d1_r1r5_c1c4.jpg)
 
 - Follow copper traces from pad to pad
 - Look for vias (small holes) that route to other layers

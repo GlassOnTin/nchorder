@@ -40,7 +40,7 @@ The Twiddler 4 consists of two PCB assemblies connected by a 12-pin flat flex ca
 
 ### Main PCB
 
-![Main PCB front with LED on](../photos/twiddler4/02_main_pcb_front_led_on.jpg)
+![Main PCB front with LED on](../../photos/twiddler4/02_main_pcb_front_led_on.jpg)
 
 The main PCB contains:
 - **U1** (center): EByte E73-2G4M08S1C module containing the nRF52840 SoC. This is the "brain" of the device - a small RF module with a ceramic antenna, about 18mm × 13mm.
@@ -52,7 +52,7 @@ The main PCB contains:
 
 ### Thumb Board
 
-![Thumb board with RGB LEDs](../photos/twiddler4/06_thumb_board_l1l2l3_leds.jpg)
+![Thumb board with RGB LEDs](../../photos/twiddler4/06_thumb_board_l1l2l3_leds.jpg)
 
 Connected via J6 (12-pin FFC), the thumb board contains:
 - **4 thumb buttons**: T1 (N), T2 (A), T3 (E), T4 (SP) - labels shown are for left-hand models
@@ -61,7 +61,7 @@ Connected via J6 (12-pin FFC), the thumb board contains:
 
 ## Button Layout
 
-![Back of device showing finger buttons](../photos/twiddler4/07_back_12_finger_buttons_usbc.jpg)
+![Back of device showing finger buttons](../../photos/twiddler4/07_back_12_finger_buttons_usbc.jpg)
 
 ```
 Thumb buttons (top):     T1   T2   T3   T4
