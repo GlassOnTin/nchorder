@@ -4,13 +4,9 @@ Custom chording keyboard using capacitive touch sensors instead of mechanical bu
 
 ## Photo Reference
 
-| Photo | Description |
-|-------|-------------|
-| ![Components](../../photos/nChorder/nChorder_components.jpg) | All components laid out |
-| ![XIAO front](../../photos/nChorder/01_xiao_nrf52840_plus_front_pinout.jpg) | XIAO nRF52840 Plus pinout (front) |
-| ![XIAO back](../../photos/nChorder/02_xiao_nrf52840_plus_back.jpg) | XIAO nRF52840 Plus (back with FCC ID) |
-| ![Trill Square](../../photos/nChorder/03_trill_square_back_pinout.jpg) | Trill Square pinout (back) |
-| ![Trill Bar](../../photos/nChorder/04_trill_bar_back_pinout.jpg) | Trill Bar pinout (back) |
+| Components | XIAO Front | XIAO Back | Trill Square | Trill Bar |
+|:----------:|:----------:|:---------:|:------------:|:---------:|
+| <a href="../../photos/nChorder/nChorder_components.jpg"><img src="../../photos/nChorder/nChorder_components.jpg" width="120"></a> | <a href="../../photos/nChorder/01_xiao_nrf52840_plus_front_pinout.jpg"><img src="../../photos/nChorder/01_xiao_nrf52840_plus_front_pinout.jpg" width="120"></a> | <a href="../../photos/nChorder/02_xiao_nrf52840_plus_back.jpg"><img src="../../photos/nChorder/02_xiao_nrf52840_plus_back.jpg" width="120"></a> | <a href="../../photos/nChorder/03_trill_square_back_pinout.jpg"><img src="../../photos/nChorder/03_trill_square_back_pinout.jpg" width="120"></a> | <a href="../../photos/nChorder/04_trill_bar_back_pinout.jpg"><img src="../../photos/nChorder/04_trill_bar_back_pinout.jpg" width="120"></a> |
 
 ## Bill of Materials
 
@@ -26,7 +22,7 @@ Custom chording keyboard using capacitive touch sensors instead of mechanical bu
 
 ### Seeed XIAO nRF52840-Plus
 
-![XIAO nRF52840 Plus front](../../photos/nChorder/01_xiao_nrf52840_plus_front_pinout.jpg)
+<a href="../../photos/nChorder/01_xiao_nrf52840_plus_front_pinout.jpg"><img src="../../photos/nChorder/01_xiao_nrf52840_plus_front_pinout.jpg" width="200"></a>
 
 **Pinout** (from silkscreen on PCB):
 
@@ -84,7 +80,7 @@ All Trill sensors use I2C with **default address 0x20**. Since we have 4 sensors
 
 #### Trill Bar Pinout
 
-![Trill Bar back](../../photos/nChorder/04_trill_bar_back_pinout.jpg)
+<a href="../../photos/nChorder/04_trill_bar_back_pinout.jpg"><img src="../../photos/nChorder/04_trill_bar_back_pinout.jpg" width="200"></a>
 
 6-pin header (active area at bottom, connector at top):
 
@@ -106,7 +102,7 @@ All Trill sensors use I2C with **default address 0x20**. Since we have 4 sensors
 
 #### Trill Square Pinout
 
-![Trill Square back](../../photos/nChorder/03_trill_square_back_pinout.jpg)
+<a href="../../photos/nChorder/03_trill_square_back_pinout.jpg"><img src="../../photos/nChorder/03_trill_square_back_pinout.jpg" width="200"></a>
 
 J1 6-pin header (active area at bottom):
 
