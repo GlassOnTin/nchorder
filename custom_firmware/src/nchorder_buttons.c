@@ -1,11 +1,33 @@
 /**
- * Twiddler 4 Custom Firmware - Button Scanning Driver
+ * Northern Chorder - Button Scanning Driver
  *
- * Implements GPIO-based button input with GPIOTE interrupts
- * All 16 buttons on GPIO Port 0, active-low with internal pull-ups
+ * This file provides button input handling. The actual implementation
+ * is selected at compile time based on the board configuration:
+ *
+ * - GPIO driver (default): For Twiddler 4 and DK boards
+ * - Trill driver: For XIAO nRF52840 with capacitive touch sensors
  */
 
 #include "nchorder_buttons.h"
+#include "nchorder_config.h"
+
+// ============================================================================
+// DRIVER SELECTION
+// ============================================================================
+// If BUTTON_DRIVER_TRILL is defined (in board header), use Trill driver.
+// Otherwise, use the GPIO driver below.
+
+#if defined(BUTTON_DRIVER_TRILL)
+
+// Include Trill button driver implementation
+#include "button_driver_trill.c"
+
+#else // GPIO Driver
+
+// ============================================================================
+// GPIO BUTTON DRIVER IMPLEMENTATION
+// ============================================================================
+
 #include "nrf_gpio.h"
 #include "nrfx_gpiote.h"
 #include "app_timer.h"
@@ -219,3 +241,5 @@ const char* buttons_to_string(uint16_t bitmask)
     *ptr = '\0';
     return buffer;
 }
+
+#endif // BUTTON_DRIVER_TRILL

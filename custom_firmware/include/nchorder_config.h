@@ -5,8 +5,9 @@
  * board-specific header and defining common settings.
  *
  * Supported boards:
- * - BOARD_TWIDDLER4: Actual Twiddler 4 hardware
- * - BOARD_PCA10056:  Nordic nRF52840-DK for testing
+ * - BOARD_TWIDDLER4:      Actual Twiddler 4 hardware (GPIO buttons)
+ * - BOARD_PCA10056:       Nordic nRF52840-DK for testing (GPIO buttons)
+ * - BOARD_XIAO_NRF52840:  Seeed XIAO nRF52840 with Trill sensors
  */
 
 #ifndef NCHORDER_CONFIG_H
@@ -18,7 +19,9 @@
 // Define the target board. This can be set in the Makefile via CFLAGS.
 // Default to Twiddler4 if not specified.
 
-#if defined(BOARD_PCA10056)
+#if defined(BOARD_XIAO_NRF52840)
+    #include "boards/board_xiao_nrf52840.h"
+#elif defined(BOARD_PCA10056)
     #include "boards/board_pca10056.h"
 #elif defined(BOARD_TWIDDLER4)
     #include "boards/board_twiddler4.h"

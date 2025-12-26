@@ -1709,10 +1709,15 @@ static void buttons_leds_init(bool * p_erase_bonds)
 {
     ret_code_t err_code;
 
-    // Only initialize LEDs via BSP - we use our own button handling (nchorder_buttons)
-    // which conflicts with BSP_INIT_BUTTONS on the same GPIO pins
+    // BSP init - only on boards that use SDK's BSP LED definitions
+    // XIAO uses our own LED driver (nchorder_led_gpio.c) so skip BSP
+#if !defined(BOARD_XIAO_NRF52840)
     err_code = bsp_init(BSP_INIT_LEDS, bsp_event_handler);
     APP_ERROR_CHECK(err_code);
+#else
+    (void)err_code;
+    NRF_LOG_INFO("BSP init skipped (XIAO uses custom LED driver)");
+#endif
 
     // Skip bsp_btn_ble_init since we're not using BSP buttons
     // Our nchorder_buttons module handles all button input
@@ -2062,19 +2067,22 @@ static void nchorder_init(void)
         NRF_LOG_WARNING("Twiddler: Config load failed: %d, using defaults", err_code);
     }
 
-    // Initialize button GPIO and set callback
+    // Initialize button input (Trill sensors on XIAO, GPIO on others)
     err_code = buttons_init();
     if (err_code != NRF_SUCCESS)
     {
-        NRF_LOG_ERROR("Twiddler: Button init failed: %d", err_code);
-        APP_ERROR_HANDLER(err_code);
+        NRF_LOG_ERROR("Twiddler: Button init failed: %d (continuing anyway)", err_code);
+        // Don't halt - allow BLE to work for debugging even without buttons
+    }
+    else
+    {
+        buttons_set_callback(nchorder_button_callback);
     }
 
-    buttons_set_callback(nchorder_button_callback);
-
     // Initialize USB HID (for wired operation)
-    // Note: USB init has SDK assertions that crash on some boards (DK power events)
-#if !defined(BOARD_PCA10056)
+    // Note: USB init crashes on DK and XIAO due to SDK power event assertions
+    // TODO: Debug USB power detection for XIAO; for now, BLE-only mode
+#if defined(BOARD_TWIDDLER4)
     err_code = nchorder_usb_init();
     if (err_code != NRF_SUCCESS)
     {
@@ -2082,7 +2090,8 @@ static void nchorder_init(void)
         // Don't fail - USB is optional, BLE still works
     }
 #else
-    NRF_LOG_INFO("Twiddler: USB disabled on DK (use J3 USB port with different firmware for USB HID)");
+    NRF_LOG_INFO("USB disabled (XIAO: power event crash, DK: no USB HID support)");
+    (void)err_code;  // Suppress unused warning
 #endif
 
     uint16_t key_count = chord_get_mapping_count();
@@ -2135,25 +2144,27 @@ int main(void)
     buffer_init();
     peer_manager_init();
 
-    // Initialize flash storage for chord config
-    ret_code_t storage_err = nchorder_storage_init();
-    if (storage_err != NRF_SUCCESS)
-    {
-        NRF_LOG_WARNING("Storage init failed: %d (configs won't persist)", storage_err);
-    }
+    // Re-enabling one at a time to find crash source
 
-    // Initialize Twiddler chord input
-    nchorder_init();
-
-    // Initialize RGB LEDs
+    // TEST 1: LED init only
     ret_code_t led_err = nchorder_led_init();
     if (led_err != NRF_SUCCESS)
     {
         NRF_LOG_WARNING("LED init failed: %d (LEDs won't work)", led_err);
     }
 
+    // TEST 2: Storage init (LED passed)
+    ret_code_t storage_err = nchorder_storage_init();
+    if (storage_err != NRF_SUCCESS)
+    {
+        NRF_LOG_WARNING("Storage init failed: %d (configs won't persist)", storage_err);
+    }
+
+    // TEST 4: nchorder_init with USB disabled
+    nchorder_init();
+
     // Start execution.
-    NRF_LOG_INFO("Twiddler 4 Custom Firmware started.");
+    NRF_LOG_INFO("nChorder XIAO firmware started.");
     timers_start();
     advertising_start(erase_bonds);
 

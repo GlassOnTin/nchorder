@@ -1,9 +1,14 @@
-# Twiddler 4 Custom Firmware Makefile
+# Northern Chorder Custom Firmware Makefile
 # Based on Nordic SDK 17.1.0 ble_app_hids_keyboard example
 #
-# Build: make
+# Build: make              (default: twiddler4)
+#        make BOARD=xiao   (XIAO nRF52840 with Trill sensors)
+#        make BOARD=dk     (nRF52840-DK for testing)
 # Clean: make clean
 # Flash: make flash (requires nrfjprog)
+
+# Board selection (twiddler4, xiao, dk)
+BOARD ?= twiddler4
 
 PROJECT_NAME     := nchorder_custom
 TARGETS          := nrf52840_xxaa
@@ -67,6 +72,7 @@ SRC_FILES += \
   $(PROJ_DIR)/src/nchorder_buttons.c \
   $(PROJ_DIR)/src/nchorder_chords.c \
   $(PROJ_DIR)/src/nchorder_usb.c \
+  $(PROJ_DIR)/src/nchorder_storage.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_usbd.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
@@ -105,6 +111,22 @@ SRC_FILES += \
   $(SDK_ROOT)/components/softdevice/common/nrf_sdh.c \
   $(SDK_ROOT)/components/softdevice/common/nrf_sdh_ble.c \
   $(SDK_ROOT)/components/softdevice/common/nrf_sdh_soc.c \
+
+# Board-specific source files
+ifeq ($(BOARD),xiao)
+  # XIAO nRF52840 with Trill capacitive sensors
+  # Uses GPIO LED (no WS2812B), I2C for Trill sensors
+  SRC_FILES += \
+    $(PROJ_DIR)/src/nchorder_led_gpio.c \
+    $(PROJ_DIR)/src/nchorder_i2c.c \
+    $(PROJ_DIR)/src/nchorder_trill.c \
+    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
+else
+  # Twiddler4/DK: WS2812B LEDs via I2S
+  SRC_FILES += \
+    $(PROJ_DIR)/src/nchorder_led.c \
+    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_i2s.c
+endif
 
 # Include folders
 INC_FOLDERS += \
@@ -253,7 +275,19 @@ OPT = -Os -g3
 CFLAGS += $(OPT)
 CFLAGS += -DAPP_TIMER_V2
 CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
-CFLAGS += -DBOARD_PCA10056
+
+# Board-specific defines
+# Note: BOARD_PCA10056 is always needed for SDK compatibility (same nRF52840 chip)
+# Our code uses BOARD_XIAO_NRF52840/BOARD_TWIDDLER4 for GPIO pin selection
+ifeq ($(BOARD),xiao)
+  CFLAGS += -DBOARD_XIAO_NRF52840 -DBOARD_PCA10056
+else ifeq ($(BOARD),dk)
+  CFLAGS += -DBOARD_PCA10056 -DBOARD_IS_DK
+else
+  # Default: Twiddler 4
+  CFLAGS += -DBOARD_TWIDDLER4 -DBOARD_PCA10056
+endif
+
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DNRF52840_XXAA
@@ -277,7 +311,16 @@ ASMFLAGS += -mthumb -mabi=aapcs
 ASMFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 ASMFLAGS += -DAPP_TIMER_V2
 ASMFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
-ASMFLAGS += -DBOARD_PCA10056
+
+# Board-specific defines (must match CFLAGS)
+ifeq ($(BOARD),xiao)
+  ASMFLAGS += -DBOARD_XIAO_NRF52840 -DBOARD_PCA10056
+else ifeq ($(BOARD),dk)
+  ASMFLAGS += -DBOARD_PCA10056
+else
+  ASMFLAGS += -DBOARD_TWIDDLER4 -DBOARD_PCA10056
+endif
+
 ASMFLAGS += -DCONFIG_GPIO_AS_PINRESET
 ASMFLAGS += -DFLOAT_ABI_HARD
 ASMFLAGS += -DNRF52840_XXAA
@@ -306,14 +349,21 @@ LIB_FILES += -lc -lnosys -lm
 default: nrf52840_xxaa
 
 help:
-	@echo "Twiddler 4 Custom Firmware Build System"
+	@echo "Northern Chorder Firmware Build System"
 	@echo ""
-	@echo "Targets:"
-	@echo "  make         - Build firmware"
-	@echo "  make clean   - Remove build artifacts"
-	@echo "  make flash   - Flash firmware (preserves bootloader)"
+	@echo "Board targets (BOARD=):"
+	@echo "  twiddler4    - Twiddler 4 hardware (default)"
+	@echo "  xiao         - XIAO nRF52840 with Trill sensors"
+	@echo "  dk           - nRF52840-DK for testing"
+	@echo ""
+	@echo "Build commands:"
+	@echo "  make                  - Build for default board (twiddler4)"
+	@echo "  make BOARD=xiao       - Build for XIAO nRF52840"
+	@echo "  make BOARD=dk         - Build for nRF52840-DK"
+	@echo "  make clean            - Remove build artifacts"
+	@echo "  make flash            - Flash firmware (preserves bootloader)"
 	@echo "  make flash_softdevice - Flash SoftDevice S140"
-	@echo "  make erase   - DANGEROUS: Erase entire flash including bootloader"
+	@echo "  make erase            - DANGEROUS: Erase entire flash"
 	@echo ""
 	@echo "Output: _build/nrf52840_xxaa.hex"
 

@@ -201,13 +201,13 @@ J1 6-pin header (active area at bottom):
 ```
 XIAO nRF52840                      PCA9548 (0x70)                 Trill Sensors
 ┌───────────┐                    ┌─────────────────┐
-│       SDA ├───────────────────►│ SDA        SD0 ├────► Trill Bar 1 (0x20)
+│       SDA ├───────────────────►│ SDA        SD0 ├────► Trill Square (0x20)
 │       SCL ├───────────────────►│ SCL        SC0 │
-│           │                    │            SD1 ├────► Trill Bar 2 (0x20)
+│        D6 ├───────────────────►│ RST        SD1 ├────► Trill Bar 1 (0x20)
 │           │                    │            SC1 │
-│           │                    │            SD2 ├────► Trill Bar 3 (0x20)
+│           │                    │            SD2 ├────► Trill Bar 2 (0x20)
 │           │                    │            SC2 │
-│           │                    │            SD3 ├────► Trill Square (0x20)
+│           │                    │            SD3 ├────► Trill Bar 3 (0x20)
 │           │                    │            SC3 │
 └───────────┘                    └─────────────────┘
 ```
@@ -243,15 +243,17 @@ Following standard practice visible in reference photo:
 | **I2C Main Bus** |
 | XIAO | D4 (SDA) | PCA9548 | SDA | Yellow | I2C Data |
 | XIAO | D5 (SCL) | PCA9548 | SCL | Blue | I2C Clock |
+| **Control** |
+| XIAO | D6 | PCA9548 | RST | - | Reset (active low) |
 | **I2C Mux Channels** |
-| PCA9548 | SD0 | Trill Bar 1 | SDA | Yellow | Ch0 Data |
-| PCA9548 | SC0 | Trill Bar 1 | SCL | Blue | Ch0 Clock |
-| PCA9548 | SD1 | Trill Bar 2 | SDA | Yellow | Ch1 Data |
-| PCA9548 | SC1 | Trill Bar 2 | SCL | Blue | Ch1 Clock |
-| PCA9548 | SD2 | Trill Bar 3 | SDA | Yellow | Ch2 Data |
-| PCA9548 | SC2 | Trill Bar 3 | SCL | Blue | Ch2 Clock |
-| PCA9548 | SD3 | Trill Square | SDA | Yellow | Ch3 Data |
-| PCA9548 | SC3 | Trill Square | SCL | Blue | Ch3 Clock |
+| PCA9548 | SD0 | Trill Square | SDA | Yellow | Ch0 Data (thumb) |
+| PCA9548 | SC0 | Trill Square | SCL | Blue | Ch0 Clock |
+| PCA9548 | SD1 | Trill Bar 1 | SDA | Yellow | Ch1 Data (finger row 1) |
+| PCA9548 | SC1 | Trill Bar 1 | SCL | Blue | Ch1 Clock |
+| PCA9548 | SD2 | Trill Bar 2 | SDA | Yellow | Ch2 Data (finger row 2) |
+| PCA9548 | SC2 | Trill Bar 2 | SCL | Blue | Ch2 Clock |
+| PCA9548 | SD3 | Trill Bar 3 | SDA | Yellow | Ch3 Data (finger row 3) |
+| PCA9548 | SC3 | Trill Bar 3 | SCL | Blue | Ch3 Clock |
 
 ## I2C Software Configuration
 
@@ -260,25 +262,40 @@ Following standard practice visible in reference photo:
 To communicate with a specific Trill sensor, first select the PCA9548 channel:
 
 ```c
+#define PCA9548_ADDR  0x70
+#define TRILL_ADDR    0x20
+#define MUX_RST_PIN   D6  // GPIO for mux reset
+
+// Reset the multiplexer
+void reset_mux(void) {
+    nrf_gpio_pin_clear(MUX_RST_PIN);
+    nrf_delay_us(10);
+    nrf_gpio_pin_set(MUX_RST_PIN);
+}
+
 // Select multiplexer channel (0-7)
 void select_mux_channel(uint8_t channel) {
     uint8_t data = (1 << channel);  // Enable one channel
-    i2c_write(PCA9548_ADDR, &data, 1);  // 0x70
+    i2c_write(PCA9548_ADDR, &data, 1);
 }
 
-// Example: Read from Trill Bar 2
-select_mux_channel(1);  // Channel 1
-trill_read(TRILL_ADDR);  // 0x20
+// Example: Read from Trill Square (thumb)
+select_mux_channel(0);  // Channel 0
+trill_read(TRILL_ADDR);
+
+// Example: Read from Trill Bar 2 (finger row 2)
+select_mux_channel(2);  // Channel 2
+trill_read(TRILL_ADDR);
 ```
 
 ### Sensor Assignment
 
 | Mux Channel | Sensor | Intended Use |
 |-------------|--------|--------------|
-| 0 | Trill Bar 1 | Finger buttons (index finger row) |
-| 1 | Trill Bar 2 | Finger buttons (middle finger row) |
-| 2 | Trill Bar 3 | Finger buttons (ring/pinky row) |
-| 3 | Trill Square | Thumb button / mouse control |
+| 0 | Trill Square | Thumb control (tap/mouse/scroll) |
+| 1 | Trill Bar 1 | Finger row 1 (index) |
+| 2 | Trill Bar 2 | Finger row 2 (middle) |
+| 3 | Trill Bar 3 | Finger row 3 (ring/pinky) |
 
 ## Mechanical Considerations
 
@@ -317,10 +334,15 @@ Trill Square can function as:
 - [x] Trill Square pinout (6-pin: SCL, SDA, VCC, GND, EVT, RST)
 - [x] Trill default I2C address 0x20
 
+**Wired up:**
+- [x] XIAO to PCA9548 (VIN, GND, SDA, SCL, RST)
+- [x] Trill Square on mux channel 0
+
 **Not yet tested:**
-- [ ] XIAO I2C actually working with Trill sensors
+- [ ] XIAO I2C communication with PCA9548
 - [ ] PCA9548 channel selection protocol
-- [ ] All 4 Trill sensors through mux
+- [ ] Trill Square responding through mux ch0
+- [ ] Trill Bars on mux channels 1-3
 - [ ] Power consumption within XIAO 3V3 rail capacity
 - [ ] I2C pull-up requirements (internal vs external)
 - [ ] Battery charging and runtime
