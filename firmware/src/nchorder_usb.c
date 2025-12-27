@@ -6,12 +6,15 @@
 
 #include "nchorder_usb.h"
 #include "nchorder_config.h"
+#include "nchorder_msc.h"
 
 #include "app_usbd.h"
 #include "app_usbd_core.h"
 #include "app_usbd_hid_kbd.h"
 #include "nrf_drv_clock.h"
+#include "nrf_delay.h"
 #include "nrf_log.h"
+#include "SEGGER_RTT.h"
 
 // USB HID keyboard interface number
 #define NCHORDER_USB_INTERFACE_KBD   0
@@ -84,11 +87,19 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Suspended");
             m_usb_suspended = true;
             app_usbd_suspend_req();
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+            // Request config reload when USB is suspended (host ejected the drive)
+            nchorder_msc_on_disconnect();
+#endif
             break;
 
         case APP_USBD_EVT_DRV_RESUME:
             NRF_LOG_INFO("USB: Resumed");
             m_usb_suspended = false;
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+            // Mark USB as active (host resumed communication)
+            nchorder_msc_set_active();
+#endif
             break;
 
         case APP_USBD_EVT_STARTED:
@@ -100,6 +111,10 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Stopped");
             m_usb_connected = false;
             app_usbd_disable();
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+            // Request config reload when USB stops
+            nchorder_msc_on_disconnect();
+#endif
             break;
 
         case APP_USBD_EVT_POWER_DETECTED:
@@ -114,6 +129,10 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Power removed");
             m_usb_connected = false;
             app_usbd_stop();
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+            // Request config reload when USB power is removed
+            nchorder_msc_on_disconnect();
+#endif
             break;
 
         case APP_USBD_EVT_POWER_READY:
@@ -130,18 +149,39 @@ uint32_t nchorder_usb_init(void)
 {
     ret_code_t ret;
 
-    NRF_LOG_INFO("USB: Initializing HID keyboard");
+    SEGGER_RTT_printf(0, "USB: Start init\n");
+
+    // Initialize clock driver (required by USB)
+    ret = nrf_drv_clock_init();
+    SEGGER_RTT_printf(0, "USB: clock_init ret=%d\n", ret);
+    if ((ret != NRF_SUCCESS) && (ret != NRF_ERROR_MODULE_ALREADY_INITIALIZED))
+    {
+        return ret;
+    }
+
+    // Request HFCLK (required for USB)
+    SEGGER_RTT_printf(0, "USB: HFCLK running=%d\n", nrf_drv_clock_hfclk_is_running());
+    if (!nrf_drv_clock_hfclk_is_running())
+    {
+        nrf_drv_clock_hfclk_request(NULL);
+        while (!nrf_drv_clock_hfclk_is_running())
+        {
+            // Wait for HFCLK to start
+        }
+        SEGGER_RTT_printf(0, "USB: HFCLK started\n");
+    }
 
     // USB device configuration
     static const app_usbd_config_t usbd_config = {
         .ev_state_proc = usbd_user_ev_handler,
     };
 
+    SEGGER_RTT_printf(0, "USB: Calling app_usbd_init\n");
     // Initialize USB device library
     ret = app_usbd_init(&usbd_config);
+    SEGGER_RTT_printf(0, "USB: app_usbd_init ret=%d\n", ret);
     if (ret != NRF_SUCCESS)
     {
-        NRF_LOG_ERROR("USB: app_usbd_init failed: %d", ret);
         return ret;
     }
 
@@ -156,15 +196,52 @@ uint32_t nchorder_usb_init(void)
         return ret;
     }
 
-    // Enable USB power detection
-    ret = app_usbd_power_events_enable();
+    NRF_LOG_INFO("USB: Init complete (call nchorder_usb_start after adding all classes)");
+    return NRF_SUCCESS;
+}
+
+uint32_t nchorder_usb_start(void)
+{
+#if defined(BOARD_XIAO_NRF52840)
+    // XIAO: Skip power events (crashes with SoftDevice), manually start USB
+    // USB is always connected when XIAO is plugged in
+    NRF_LOG_INFO("USB: Manual start (XIAO, no power detection)");
+    app_usbd_enable();
+    app_usbd_start();
+
+    // Process events to actually start USB (enable D+ pullup)
+    // The start request is queued and processed asynchronously
+    for (int i = 0; i < 100; i++)
+    {
+        while (app_usbd_event_queue_process())
+        {
+            // Process all pending events
+        }
+        if (nrf_drv_usbd_is_started())
+        {
+            SEGGER_RTT_printf(0, "USB: Pullup enabled after %d iterations\n", i);
+            break;
+        }
+        nrf_delay_ms(1);
+    }
+
+    m_usb_connected = nrf_drv_usbd_is_started();
+    if (!m_usb_connected)
+    {
+        NRF_LOG_WARNING("USB: Failed to start (pullup not enabled)");
+        return NRF_ERROR_INTERNAL;
+    }
+#else
+    // Other boards: Use power detection to start USB when cable connected
+    ret_code_t ret = app_usbd_power_events_enable();
     if (ret != NRF_SUCCESS)
     {
         NRF_LOG_ERROR("USB: power_events_enable failed: %d", ret);
         return ret;
     }
+#endif
 
-    NRF_LOG_INFO("USB: Init complete");
+    NRF_LOG_INFO("USB: Started");
     return NRF_SUCCESS;
 }
 

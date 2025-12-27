@@ -98,6 +98,7 @@
 #include "nchorder_hid.h"
 #include "nchorder_storage.h"
 #include "nchorder_usb.h"
+#include "nchorder_msc.h"
 #include "nchorder_led.h"
 
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
@@ -2290,22 +2291,35 @@ static void nchorder_init(void)
         buttons_set_callback(nchorder_button_callback);
     }
 
-    // Initialize USB HID (for wired operation)
-    // Note: USB init crashes on DK and XIAO due to SDK power event assertions
-    // TODO: Debug USB power detection for XIAO; for now, BLE-only mode
-#if defined(BOARD_TWIDDLER4)
+    // Initialize USB HID + MSC (for wired operation and config upload)
+    // XIAO uses manual USB start (no power detection) to avoid SoftDevice conflict
+    // DK is BLE-only for testing
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
     err_code = nchorder_usb_init();
     if (err_code != NRF_SUCCESS)
     {
-        NRF_LOG_WARNING("Twiddler: USB init failed: %d (USB disabled)", err_code);
+        NRF_LOG_WARNING("USB HID init failed: %d (USB disabled)", err_code);
         // Don't fail - USB is optional, BLE still works
     }
-#else
-#if defined(BOARD_XIAO_NRF52840)
-    NRF_LOG_INFO("USB disabled (XIAO: power event causes crash)");
+    else
+    {
+        // Add MSC class for config file upload
+        err_code = nchorder_msc_init();
+        if (err_code != NRF_SUCCESS)
+        {
+            NRF_LOG_WARNING("USB MSC init failed: %d (mass storage disabled)", err_code);
+            // Continue - HID still works
+        }
+
+        // Start USB after all classes have been added
+        err_code = nchorder_usb_start();
+        if (err_code != NRF_SUCCESS)
+        {
+            NRF_LOG_WARNING("USB start failed: %d", err_code);
+        }
+    }
 #else
     NRF_LOG_INFO("USB disabled (DK: BLE-only testing mode)");
-#endif
     (void)err_code;  // Suppress unused warning
 #endif
 
@@ -2402,6 +2416,10 @@ int main(void)
     for (;;)
     {
         nrf_ble_lesc_request_handler();  // Process LESC requests
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+        nchorder_usb_process();  // Process USB events
+        nchorder_msc_process();  // Process deferred MSC operations (config reload)
+#endif
         idle_state_handle();
     }
 }

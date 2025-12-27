@@ -13,11 +13,22 @@
 
 /**
  * Initialize USB HID subsystem
- * Sets up USB device with HID keyboard class
+ * Sets up USB device with HID keyboard class.
+ * Does NOT start USB - call nchorder_usb_start() after adding all classes.
  *
  * @return 0 on success, error code on failure
  */
 uint32_t nchorder_usb_init(void);
+
+/**
+ * Start USB device
+ * Call after all USB classes (HID, MSC) have been registered.
+ * For XIAO: manually enables and starts USB
+ * For other boards: enables power detection for USB plug events
+ *
+ * @return 0 on success, error code on failure
+ */
+uint32_t nchorder_usb_start(void);
 
 /**
  * Check if USB is connected and ready

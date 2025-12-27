@@ -6444,12 +6444,13 @@
 #endif
 
 // <q> APP_USBD_CONFIG_POWER_EVENTS_PROCESS  - Process power events.
- 
+
 
 // <i> Enable processing power events in USB event handler.
+// DISABLED: We manually manage USB enable/start, and SoftDevice conflicts with power driver init
 
 #ifndef APP_USBD_CONFIG_POWER_EVENTS_PROCESS
-#define APP_USBD_CONFIG_POWER_EVENTS_PROCESS 1
+#define APP_USBD_CONFIG_POWER_EVENTS_PROCESS 0
 #endif
 
 // <e> APP_USBD_CONFIG_EVENT_QUEUE_ENABLE - Enable event queue.
@@ -6701,8 +6702,36 @@
  
 
 #ifndef APP_USBD_MSC_ENABLED
-#define APP_USBD_MSC_ENABLED 0
+#define APP_USBD_MSC_ENABLED 1
 #endif
+
+// <q> NRF_BLOCK_DEV_RAM_ENABLED  - nrf_block_dev_ram - RAM block device
+
+#ifndef NRF_BLOCK_DEV_RAM_ENABLED
+#define NRF_BLOCK_DEV_RAM_ENABLED 1
+#endif
+
+// <e> NRF_BLOCK_DEV_RAM_CONFIG_LOG_ENABLED - Enables logging in the module.
+#ifndef NRF_BLOCK_DEV_RAM_CONFIG_LOG_ENABLED
+#define NRF_BLOCK_DEV_RAM_CONFIG_LOG_ENABLED 0
+#endif
+
+#ifndef NRF_BLOCK_DEV_RAM_CONFIG_LOG_LEVEL
+#define NRF_BLOCK_DEV_RAM_CONFIG_LOG_LEVEL 3
+#endif
+
+#ifndef NRF_BLOCK_DEV_RAM_CONFIG_LOG_INIT_FILTER_LEVEL
+#define NRF_BLOCK_DEV_RAM_CONFIG_LOG_INIT_FILTER_LEVEL 3
+#endif
+
+#ifndef NRF_BLOCK_DEV_RAM_CONFIG_INFO_COLOR
+#define NRF_BLOCK_DEV_RAM_CONFIG_INFO_COLOR 0
+#endif
+
+#ifndef NRF_BLOCK_DEV_RAM_CONFIG_DEBUG_COLOR
+#define NRF_BLOCK_DEV_RAM_CONFIG_DEBUG_COLOR 0
+#endif
+// </e>
 
 // <q> CRC16_ENABLED  - crc16 - CRC16 calculation routines
  
