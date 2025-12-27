@@ -129,6 +129,16 @@ ret_code_t trill_init(trill_sensor_t *sensor, uint8_t i2c_addr)
 
     nrf_delay_ms(5);
 
+    // Step 3.5: Enable auto-scan (sensor continuously updates data)
+    uint8_t auto_scan_param = 1;  // 1 = enable
+    err = trill_send_command(i2c_addr, TRILL_CMD_AUTO_SCAN, &auto_scan_param, 1);
+    if (err != NRF_SUCCESS) {
+        NRF_LOG_WARNING("Trill auto-scan enable failed: 0x%08X", err);
+        // Non-fatal, continue
+    }
+
+    nrf_delay_ms(5);
+
     // Step 4: Update baseline
     err = trill_update_baseline(sensor);
     if (err != NRF_SUCCESS) {

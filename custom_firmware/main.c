@@ -83,6 +83,7 @@
 #include "nrf_ble_qwr.h"
 #include "nrf_pwr_mgmt.h"
 #include "peer_manager_handler.h"
+#include "nrf_ble_lesc.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -140,7 +141,7 @@
 
 #define SEC_PARAM_BOND                      1                                          /**< Perform bonding. */
 #define SEC_PARAM_MITM                      0                                          /**< Man In The Middle protection not required. */
-#define SEC_PARAM_LESC                      0                                          /**< LE Secure Connections not enabled. */
+#define SEC_PARAM_LESC                      1                                          /**< LE Secure Connections enabled. */
 #define SEC_PARAM_KEYPRESS                  0                                          /**< Keypress notifications not enabled. */
 #define SEC_PARAM_IO_CAPABILITIES           BLE_GAP_IO_CAPS_NONE                       /**< No I/O capabilities. */
 #define SEC_PARAM_OOB                       0                                          /**< Out Of Band data not available. */
@@ -157,6 +158,22 @@
 #define OUTPUT_REP_REF_ID                   0                                          /**< Id of reference to Keyboard Output Report. */
 #define FEATURE_REP_REF_ID                  0                                          /**< ID of reference to Keyboard Feature Report. */
 #define INPUT_REPORT_CONSUMER_MAX_LEN       2                                          /**< Maximum length of Consumer Control Input Report (16-bit usage code). */
+
+// DEBUG: RAM-based debug log at fixed address for J-Link monitoring
+// Read with: mem32 0x20030000 8
+// Layout: [0] event_count, [1] last_event, [2] last_err, [3] disconnect_reason,
+//         [4] conn_events, [5] disc_events, [6] sec_events, [7] auth_status
+typedef struct {
+    volatile uint32_t event_count;      // Total events
+    volatile uint32_t last_event;       // Last BLE event ID
+    volatile uint32_t last_err;         // Last error code
+    volatile uint32_t disconnect_reason;// Last disconnect reason
+    volatile uint32_t conn_events;      // Connection event count
+    volatile uint32_t disc_events;      // Disconnection event count
+    volatile uint32_t sec_events;       // Security event count
+    volatile uint32_t auth_status;      // Last auth status
+} ble_debug_t;
+#define BLE_DEBUG ((ble_debug_t*)0x20030000)  // Safe area away from stack and debug_step
 #define FEATURE_REPORT_MAX_LEN              2                                          /**< Maximum length of Feature Report. */
 #define FEATURE_REPORT_INDEX                0                                          /**< Index of Feature Report. */
 
@@ -375,16 +392,39 @@ static void delete_bonds(void)
  */
 static void advertising_start(bool erase_bonds)
 {
+    ret_code_t ret;
+
     if (erase_bonds == true)
     {
         delete_bonds();
-        // Advertising is started by PM_EVT_PEERS_DELETE_SUCCEEDED event.
+        // Give time for FDS operations to complete
+        nrf_delay_ms(100);
     }
-    else
-    {
-        whitelist_set(PM_PEER_ID_LIST_SKIP_NO_ID_ADDR);
 
-        ret_code_t ret = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+    NRF_LOG_INFO("Starting advertising (erase_bonds=%d)", erase_bonds);
+    ret = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+
+    // DEBUG: Blink GREEN LED to show advertising result
+    // 1 blink = success, 5 fast blinks = error
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 30));  // Green
+    if (ret == NRF_SUCCESS || ret == NRF_ERROR_INVALID_STATE) {
+        // 1 long green blink = advertising started OK
+        nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 30));  // Green ON
+        nrf_delay_ms(500);
+        nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 30));    // Green OFF
+    } else {
+        // 5 fast red blinks = advertising failed
+        for (int i = 0; i < 5; i++) {
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 26));  // Red ON
+            nrf_delay_ms(100);
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 26));    // Red OFF
+            nrf_delay_ms(100);
+        }
+    }
+
+    if (ret != NRF_SUCCESS && ret != NRF_ERROR_INVALID_STATE)
+    {
+        // NRF_ERROR_INVALID_STATE means advertising already started, which is OK
         APP_ERROR_CHECK(ret);
     }
 }
@@ -407,7 +447,8 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
             break;
 
         case PM_EVT_PEERS_DELETE_SUCCEEDED:
-            advertising_start(false);
+            // Note: advertising_start() now handles this inline, no action needed here
+            NRF_LOG_INFO("Peer delete complete");
             break;
 
         case PM_EVT_PEER_DATA_UPDATE_SUCCEEDED:
@@ -498,9 +539,19 @@ static void hid_test_timeout_handler(void * p_context)
 {
     UNUSED_PARAMETER(p_context);
 
+    // DEBUG: Toggle LED to show timer is firing (use BLUE P0.06)
+    static bool timer_led_on = false;
+    timer_led_on = !timer_led_on;
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));
+    if (timer_led_on) {
+        nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 6));  // LED on (active low)
+    } else {
+        nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));    // LED off
+    }
+
     if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
     {
-        NRF_LOG_INFO("HID TEST: Sending key 0x%02X", m_hid_test_key);
+        NRF_LOG_INFO("HID TEST: Sending key 0x%02X (conn=0x%04X)", m_hid_test_key, m_conn_handle);
         send_single_key(0, m_hid_test_key);
 
         // Cycle through a-z for visibility
@@ -717,7 +768,7 @@ static void dis_init(void)
     ble_srv_ascii_to_utf8(&dis_init_obj.manufact_name_str, MANUFACTURER_NAME);
     dis_init_obj.p_pnp_id = &pnp_id;
 
-    dis_init_obj.dis_char_rd_sec = SEC_JUST_WORKS;
+    dis_init_obj.dis_char_rd_sec = SEC_OPEN;  // DEBUG: No security for testing
 
     err_code = ble_dis_init(&dis_init_obj);
     APP_ERROR_CHECK(err_code);
@@ -738,9 +789,9 @@ static void bas_init(void)
     bas_init_obj.p_report_ref         = NULL;
     bas_init_obj.initial_batt_level   = 100;
 
-    bas_init_obj.bl_rd_sec        = SEC_JUST_WORKS;
-    bas_init_obj.bl_cccd_wr_sec   = SEC_JUST_WORKS;
-    bas_init_obj.bl_report_rd_sec = SEC_JUST_WORKS;
+    bas_init_obj.bl_rd_sec        = SEC_OPEN;  // DEBUG: No security for testing
+    bas_init_obj.bl_cccd_wr_sec   = SEC_OPEN;
+    bas_init_obj.bl_report_rd_sec = SEC_OPEN;
 
     err_code = ble_bas_init(&m_bas, &bas_init_obj);
     APP_ERROR_CHECK(err_code);
@@ -833,9 +884,10 @@ static void hids_init(void)
     p_input_report->rep_ref.report_id   = INPUT_REP_REF_ID;
     p_input_report->rep_ref.report_type = BLE_HIDS_REP_TYPE_INPUT;
 
-    p_input_report->sec.cccd_wr = SEC_JUST_WORKS;
-    p_input_report->sec.wr      = SEC_JUST_WORKS;
-    p_input_report->sec.rd      = SEC_JUST_WORKS;
+    // DEBUG: All security set to SEC_OPEN for testing
+    p_input_report->sec.cccd_wr = SEC_OPEN;
+    p_input_report->sec.wr      = SEC_OPEN;
+    p_input_report->sec.rd      = SEC_OPEN;
 
     // Consumer Control Input Report
     p_input_report                      = &input_report_array[INPUT_REPORT_CONSUMER_INDEX];
@@ -843,25 +895,25 @@ static void hids_init(void)
     p_input_report->rep_ref.report_id   = INPUT_REP_CONSUMER_ID;
     p_input_report->rep_ref.report_type = BLE_HIDS_REP_TYPE_INPUT;
 
-    p_input_report->sec.cccd_wr = SEC_JUST_WORKS;
-    p_input_report->sec.wr      = SEC_JUST_WORKS;
-    p_input_report->sec.rd      = SEC_JUST_WORKS;
+    p_input_report->sec.cccd_wr = SEC_OPEN;
+    p_input_report->sec.wr      = SEC_OPEN;
+    p_input_report->sec.rd      = SEC_OPEN;
 
     p_output_report                      = &output_report_array[OUTPUT_REPORT_INDEX];
     p_output_report->max_len             = OUTPUT_REPORT_MAX_LEN;
     p_output_report->rep_ref.report_id   = OUTPUT_REP_REF_ID;
     p_output_report->rep_ref.report_type = BLE_HIDS_REP_TYPE_OUTPUT;
 
-    p_output_report->sec.wr = SEC_JUST_WORKS;
-    p_output_report->sec.rd = SEC_JUST_WORKS;
+    p_output_report->sec.wr = SEC_OPEN;
+    p_output_report->sec.rd = SEC_OPEN;
 
     p_feature_report                      = &feature_report_array[FEATURE_REPORT_INDEX];
     p_feature_report->max_len             = FEATURE_REPORT_MAX_LEN;
     p_feature_report->rep_ref.report_id   = FEATURE_REP_REF_ID;
     p_feature_report->rep_ref.report_type = BLE_HIDS_REP_TYPE_FEATURE;
 
-    p_feature_report->sec.rd              = SEC_JUST_WORKS;
-    p_feature_report->sec.wr              = SEC_JUST_WORKS;
+    p_feature_report->sec.rd              = SEC_OPEN;
+    p_feature_report->sec.wr              = SEC_OPEN;
 
     hid_info_flags = HID_INFO_FLAG_REMOTE_WAKE_MSK | HID_INFO_FLAG_NORMALLY_CONNECTABLE_MSK;
 
@@ -885,18 +937,19 @@ static void hids_init(void)
     hids_init_obj.included_services_count        = 0;
     hids_init_obj.p_included_services_array      = NULL;
 
-    hids_init_obj.rep_map.rd_sec         = SEC_JUST_WORKS;
-    hids_init_obj.hid_information.rd_sec = SEC_JUST_WORKS;
+    // DEBUG: Disable security entirely for testing - change back to SEC_JUST_WORKS for production
+    hids_init_obj.rep_map.rd_sec         = SEC_OPEN;
+    hids_init_obj.hid_information.rd_sec = SEC_OPEN;
 
-    hids_init_obj.boot_kb_inp_rep_sec.cccd_wr = SEC_JUST_WORKS;
-    hids_init_obj.boot_kb_inp_rep_sec.rd      = SEC_JUST_WORKS;
+    hids_init_obj.boot_kb_inp_rep_sec.cccd_wr = SEC_OPEN;
+    hids_init_obj.boot_kb_inp_rep_sec.rd      = SEC_OPEN;
 
-    hids_init_obj.boot_kb_outp_rep_sec.rd = SEC_JUST_WORKS;
-    hids_init_obj.boot_kb_outp_rep_sec.wr = SEC_JUST_WORKS;
+    hids_init_obj.boot_kb_outp_rep_sec.rd = SEC_OPEN;
+    hids_init_obj.boot_kb_outp_rep_sec.wr = SEC_OPEN;
 
-    hids_init_obj.protocol_mode_rd_sec = SEC_JUST_WORKS;
-    hids_init_obj.protocol_mode_wr_sec = SEC_JUST_WORKS;
-    hids_init_obj.ctrl_point_wr_sec    = SEC_JUST_WORKS;
+    hids_init_obj.protocol_mode_rd_sec = SEC_OPEN;
+    hids_init_obj.protocol_mode_wr_sec = SEC_OPEN;
+    hids_init_obj.ctrl_point_wr_sec    = SEC_OPEN;
 
     err_code = ble_hids_init(&m_hids, &hids_init_obj);
     APP_ERROR_CHECK(err_code);
@@ -969,8 +1022,8 @@ static void timers_start(void)
     err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
 
-    // DEBUG: HID test timer disabled (was cycling A-Z every 3 seconds)
-    // err_code = app_timer_start(m_hid_test_timer_id, APP_TIMER_TICKS(3000), NULL);
+    // DEBUG: HID test timer disabled - uncomment to test HID send path
+    // err_code = app_timer_start(m_hid_test_timer_id, APP_TIMER_TICKS(5000), NULL);
     // APP_ERROR_CHECK(err_code);
 }
 
@@ -1344,10 +1397,12 @@ static void on_hids_evt(ble_hids_t * p_hids, ble_hids_evt_t * p_evt)
             break;
 
         case BLE_HIDS_EVT_NOTIF_ENABLED:
+            NRF_LOG_INFO("HID: Notifications ENABLED by host (report_idx=%d)",
+                         p_evt->params.notification.char_id.rep_index);
             break;
 
         default:
-            // No implementation needed.
+            NRF_LOG_DEBUG("HID: Unhandled event %d", p_evt->evt_type);
             break;
     }
 }
@@ -1381,14 +1436,16 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             NRF_LOG_INFO("Fast advertising.");
             err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
             APP_ERROR_CHECK(err_code);
-            nchorder_led_indicate_ble_advertising();
+            // DEBUG: Disabled LED indication to avoid conflict with debug LED
+            // nchorder_led_indicate_ble_advertising();
             break;
 
         case BLE_ADV_EVT_SLOW:
             NRF_LOG_INFO("Slow advertising.");
             err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING_SLOW);
             APP_ERROR_CHECK(err_code);
-            nchorder_led_indicate_ble_advertising();
+            // DEBUG: Disabled LED indication to avoid conflict with debug LED
+            // nchorder_led_indicate_ble_advertising();
             break;
 
         case BLE_ADV_EVT_FAST_WHITELIST:
@@ -1404,7 +1461,9 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             break;
 
         case BLE_ADV_EVT_IDLE:
-            sleep_mode_enter();
+            // DEBUG: Don't sleep, restart advertising instead
+            NRF_LOG_INFO("Advertising timeout - restarting");
+            advertising_start(false);
             break;
 
         case BLE_ADV_EVT_WHITELIST_REQUEST:
@@ -1469,20 +1528,34 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 {
     ret_code_t err_code;
 
+    // DEBUG: Log all BLE events to RAM for J-Link monitoring
+    BLE_DEBUG->event_count++;
+    BLE_DEBUG->last_event = p_ble_evt->header.evt_id;
+
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_CONNECTED:
             NRF_LOG_INFO("Connected");
+            BLE_DEBUG->conn_events++;
+            // DEBUG: Quick LED flash - no delay to avoid GATT timeout
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 30));  // Green ON briefly
+
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
-            nchorder_led_indicate_ble_connected();
+
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 30));    // Green OFF
+            NRF_LOG_INFO("Connection established, handle=%d", m_conn_handle);
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
-            NRF_LOG_INFO("Disconnected");
+            NRF_LOG_INFO("Disconnected, reason: 0x%x", p_ble_evt->evt.gap_evt.params.disconnected.reason);
+            BLE_DEBUG->disc_events++;
+            BLE_DEBUG->disconnect_reason = p_ble_evt->evt.gap_evt.params.disconnected.reason;
+            // Quick blue flash
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 6));  // Blue ON briefly
             // Dequeue all keys without transmission.
             (void) buffer_dequeue(false);
 
@@ -1494,7 +1567,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             // disabling alert 3. signal - used for capslock ON
             err_code = bsp_indication_set(BSP_INDICATE_ALERT_OFF);
             APP_ERROR_CHECK(err_code);
-            nchorder_led_indicate_ble_advertising();
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));  // Blue OFF
 
             break; // BLE_GAP_EVT_DISCONNECTED
 
@@ -1531,8 +1604,126 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             APP_ERROR_CHECK(err_code);
             break;
 
+        case BLE_GATTS_EVT_SYS_ATTR_MISSING:
+            // Without bonding, we need to set empty system attributes
+            NRF_LOG_INFO("Setting system attributes (no bond)");
+            err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0, 0);
+            APP_ERROR_CHECK(err_code);
+            break;
+
+        case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
+            // Pairing requested - accept host's parameters
+            NRF_LOG_INFO("Security params request from host");
+            BLE_DEBUG->sec_events++;
+            {
+                // Get host's requested parameters
+                ble_gap_sec_params_t const * p_peer_params =
+                    &p_ble_evt->evt.gap_evt.params.sec_params_request.peer_params;
+
+                NRF_LOG_INFO("Host params: bond=%d mitm=%d lesc=%d io=%d",
+                    p_peer_params->bond, p_peer_params->mitm,
+                    p_peer_params->lesc, p_peer_params->io_caps);
+
+                // Store host params in debug for J-Link inspection
+                // Read at 0x20030020: [bond|mitm|lesc|io_caps]
+                volatile uint32_t *host_debug = (volatile uint32_t *)0x20030020;
+                host_debug[0] = (p_peer_params->bond << 24) | (p_peer_params->mitm << 16) |
+                               (p_peer_params->lesc << 8) | p_peer_params->io_caps;
+
+                // Set up key storage
+                static ble_gap_sec_keyset_t sec_keyset;
+                static ble_gap_enc_key_t    own_enc_key;
+                static ble_gap_id_key_t     own_id_key;
+                static ble_gap_enc_key_t    peer_enc_key;
+                static ble_gap_id_key_t     peer_id_key;
+
+                memset(&sec_keyset, 0, sizeof(sec_keyset));
+                memset(&own_enc_key, 0, sizeof(own_enc_key));
+                memset(&own_id_key, 0, sizeof(own_id_key));
+                memset(&peer_enc_key, 0, sizeof(peer_enc_key));
+                memset(&peer_id_key, 0, sizeof(peer_id_key));
+
+                sec_keyset.keys_own.p_enc_key  = &own_enc_key;
+                sec_keyset.keys_own.p_id_key   = &own_id_key;
+                sec_keyset.keys_peer.p_enc_key = &peer_enc_key;
+                sec_keyset.keys_peer.p_id_key  = &peer_id_key;
+
+                // Build our own params, don't blindly copy host's
+                ble_gap_sec_params_t sec_params;
+                memset(&sec_params, 0, sizeof(sec_params));
+                sec_params.bond         = 1;  // Enable bonding
+                sec_params.mitm         = 0;  // No MITM - Just Works
+                sec_params.lesc         = 0;  // MUST be 0 - we don't support LESC
+                sec_params.keypress     = 0;
+                sec_params.io_caps      = BLE_GAP_IO_CAPS_NONE;
+                sec_params.oob          = 0;
+                sec_params.min_key_size = 7;
+                sec_params.max_key_size = 16;
+                sec_params.kdist_own.enc  = 1;
+                sec_params.kdist_own.id   = 1;
+                sec_params.kdist_peer.enc = 1;
+                sec_params.kdist_peer.id  = 1;
+
+                err_code = sd_ble_gap_sec_params_reply(
+                    p_ble_evt->evt.gap_evt.conn_handle,
+                    BLE_GAP_SEC_STATUS_SUCCESS,
+                    &sec_params,
+                    &sec_keyset);
+                BLE_DEBUG->last_err = err_code;
+                if (err_code != NRF_SUCCESS) {
+                    NRF_LOG_WARNING("sec_params_reply failed: %d", err_code);
+                }
+            }
+            break;
+
+        case BLE_GAP_EVT_AUTH_STATUS:
+            NRF_LOG_INFO("Auth status: %d", p_ble_evt->evt.gap_evt.params.auth_status.auth_status);
+            BLE_DEBUG->auth_status = p_ble_evt->evt.gap_evt.params.auth_status.auth_status;
+            break;
+
+        case BLE_GAP_EVT_CONN_SEC_UPDATE:
+            NRF_LOG_INFO("Connection security updated, level=%d",
+                p_ble_evt->evt.gap_evt.params.conn_sec_update.conn_sec.sec_mode.lv);
+            break;
+
+        case BLE_GAP_EVT_SEC_INFO_REQUEST:
+            // Host is asking for stored bonding info - we don't have any (no FDS)
+            NRF_LOG_INFO("Security info request - no stored keys");
+            // Reply with NULL to indicate no keys stored, forcing re-pairing
+            err_code = sd_ble_gap_sec_info_reply(
+                p_ble_evt->evt.gap_evt.conn_handle,
+                NULL,  // No encryption info
+                NULL,  // No ID info
+                NULL); // No sign info
+            if (err_code != NRF_SUCCESS) {
+                NRF_LOG_WARNING("sec_info_reply failed: %d", err_code);
+            }
+            break;
+
+        case BLE_GAP_EVT_LESC_DHKEY_REQUEST:
+            // LE Secure Connections DHKey calculation - we don't support LESC
+            NRF_LOG_WARNING("LESC DHKey request - not supported");
+            break;
+
+        case BLE_GATTS_EVT_WRITE:
+            NRF_LOG_DEBUG("GATTS Write event");
+            break;
+
+        case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
+            NRF_LOG_DEBUG("GATTS RW Authorize request");
+            break;
+
+        case BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST:
+            NRF_LOG_INFO("MTU exchange request");
+            break;
+
         default:
-            // No implementation needed.
+            // Log unknown events for debugging
+            if (p_ble_evt->header.evt_id >= BLE_GAP_EVT_BASE && p_ble_evt->header.evt_id <= BLE_GAP_EVT_LAST) {
+                NRF_LOG_DEBUG("Unhandled GAP event: 0x%x", p_ble_evt->header.evt_id);
+            } else if (p_ble_evt->header.evt_id >= BLE_GATTS_EVT_BASE && p_ble_evt->header.evt_id <= BLE_GATTS_EVT_LAST) {
+                NRF_LOG_DEBUG("Unhandled GATTS event: 0x%x", p_ble_evt->header.evt_id);
+            }
             break;
     }
 }
@@ -1630,13 +1821,20 @@ static void bsp_event_handler(bsp_event_t event)
 
 /**@brief Function for the Peer Manager initialization.
  */
-static void peer_manager_init(void)
+static bool peer_manager_init(void)
 {
     ble_gap_sec_params_t sec_param;
     ret_code_t           err_code;
 
     err_code = pm_init();
-    APP_ERROR_CHECK(err_code);
+    // Store pm_init result at 0x20030030 for J-Link inspection
+    volatile uint32_t *pm_err = (volatile uint32_t *)0x20030030;
+    *pm_err = err_code;
+    if (err_code != NRF_SUCCESS)
+    {
+        NRF_LOG_WARNING("pm_init failed: 0x%x - investigating", err_code);
+        // Don't return - let's see if we can continue anyway
+    }
 
     memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
 
@@ -1655,10 +1853,20 @@ static void peer_manager_init(void)
     sec_param.kdist_peer.id  = 1;
 
     err_code = pm_sec_params_set(&sec_param);
-    APP_ERROR_CHECK(err_code);
+    if (err_code != NRF_SUCCESS)
+    {
+        NRF_LOG_WARNING("pm_sec_params_set failed: %d", err_code);
+        return false;
+    }
 
     err_code = pm_register(pm_evt_handler);
-    APP_ERROR_CHECK(err_code);
+    if (err_code != NRF_SUCCESS)
+    {
+        NRF_LOG_WARNING("pm_register failed: %d", err_code);
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -1810,6 +2018,17 @@ static void send_mouse_report(uint8_t buttons, int8_t dx, int8_t dy, int8_t whee
 }
 
 
+// Forward declaration for send_single_key
+static void send_single_key(uint8_t modifiers, uint8_t keycode);
+
+/**@brief Debug function to send test key 'A' - callable from button driver.
+ */
+void debug_send_test_key(void)
+{
+    NRF_LOG_INFO("DEBUG: debug_send_test_key called, sending 'A' (0x04)");
+    send_single_key(0, 0x04);  // 0x04 = HID keycode for 'a'
+}
+
 /**@brief Send a single keyboard key with modifiers via USB or BLE HID.
  *
  * Tries USB first (if connected), falls back to BLE.
@@ -1869,13 +2088,55 @@ static void send_single_key(uint8_t modifiers, uint8_t keycode)
                                                   m_conn_handle);
     }
 
-    if (err_code != NRF_SUCCESS &&
-        err_code != NRF_ERROR_INVALID_STATE &&
-        err_code != NRF_ERROR_RESOURCES &&
-        err_code != NRF_ERROR_BUSY &&
-        err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-    {
-        NRF_LOG_WARNING("BLE key press send failed: %d", err_code);
+    // DEBUG: Log ALL send results and use BLUE LED (P0.06) which we know works
+    // Active low: clear=ON, set=OFF
+    #define DEBUG_LED_PIN NRF_GPIO_PIN_MAP(0, 6)
+    nrf_gpio_cfg_output(DEBUG_LED_PIN);
+
+    if (err_code == NRF_SUCCESS) {
+        NRF_LOG_INFO("BLE key press SENT OK: keycode=0x%02X", keycode);
+        // 1 long blink = SUCCESS
+        nrf_gpio_pin_clear(DEBUG_LED_PIN);  // ON
+        nrf_delay_ms(500);
+        nrf_gpio_pin_set(DEBUG_LED_PIN);    // OFF
+    } else if (err_code == BLE_ERROR_GATTS_SYS_ATTR_MISSING) {
+        NRF_LOG_WARNING("BLE key press failed: SYS_ATTR_MISSING (host hasn't subscribed)");
+        // 2 blinks = SYS_ATTR_MISSING
+        for (int i = 0; i < 2; i++) {
+            nrf_gpio_pin_clear(DEBUG_LED_PIN);
+            nrf_delay_ms(200);
+            nrf_gpio_pin_set(DEBUG_LED_PIN);
+            nrf_delay_ms(200);
+        }
+    } else if (err_code == NRF_ERROR_INVALID_STATE) {
+        NRF_LOG_WARNING("BLE key press failed: INVALID_STATE (notifications not enabled)");
+        // 3 blinks = INVALID_STATE
+        for (int i = 0; i < 3; i++) {
+            nrf_gpio_pin_clear(DEBUG_LED_PIN);
+            nrf_delay_ms(200);
+            nrf_gpio_pin_set(DEBUG_LED_PIN);
+            nrf_delay_ms(200);
+        }
+    } else if (err_code == NRF_ERROR_RESOURCES) {
+        NRF_LOG_DEBUG("BLE key press deferred: RESOURCES");
+        // 4 blinks = RESOURCES
+        for (int i = 0; i < 4; i++) {
+            nrf_gpio_pin_clear(DEBUG_LED_PIN);
+            nrf_delay_ms(150);
+            nrf_gpio_pin_set(DEBUG_LED_PIN);
+            nrf_delay_ms(150);
+        }
+    } else if (err_code == NRF_ERROR_BUSY) {
+        NRF_LOG_DEBUG("BLE key press deferred: BUSY");
+    } else {
+        NRF_LOG_WARNING("BLE key press failed: err=%d", err_code);
+        // 5 blinks = other error
+        for (int i = 0; i < 5; i++) {
+            nrf_gpio_pin_clear(DEBUG_LED_PIN);
+            nrf_delay_ms(150);
+            nrf_gpio_pin_set(DEBUG_LED_PIN);
+            nrf_delay_ms(150);
+        }
     }
 
     // Small delay to allow BLE stack to send press before queueing release
@@ -2128,49 +2389,113 @@ int main(void)
 {
     bool erase_bonds;
 
-    // Initialize.
+    // STARTUP: Configure all RGB LEDs and turn them OFF
+    // Red=P0.26, Green=P0.30, Blue=P0.06
+    // Testing: Red might have OPPOSITE polarity from Blue/Green
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 26));  // Red
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 30));  // Green
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));   // Blue
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 26));     // Red OFF (active low: SET=OFF)
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 30));     // Green OFF
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));      // Blue OFF
+
+    // Blink BLUE LED 3 times to confirm startup
+    for (int i = 0; i < 3; i++) {
+        nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 6));  // Blue ON
+        nrf_delay_ms(300);
+        nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));   // Blue OFF
+        nrf_delay_ms(300);
+    }
+
+    // Test GREEN LED right after blue - 3 long green blinks
+    for (int i = 0; i < 3; i++) {
+        nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 30));  // Green ON
+        nrf_delay_ms(500);
+        nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 30));   // Green OFF
+        nrf_delay_ms(300);
+    }
+
+    // Debug: Write init progress to fixed RAM address for J-Link monitoring
+    // Read with: mem32 0x2003FFF0 1
+    volatile uint32_t *debug_step = (volatile uint32_t *)0x2003FFF0;
+    *debug_step = 0;
+
+    // Initialize BLE debug structure
+    // Read with: mem32 0x20030000 8
+    memset((void*)BLE_DEBUG, 0, sizeof(ble_debug_t));
+
     log_init();
+    *debug_step = 1;
+
     timers_init();
+    *debug_step = 2;
+
     buttons_leds_init(&erase_bonds);
+    *debug_step = 3;
+
     power_management_init();
+    *debug_step = 4;
+
     ble_stack_init();
+    *debug_step = 5;
+
     scheduler_init();
+    *debug_step = 6;
+
     gap_params_init();
+    *debug_step = 7;
+
     gatt_init();
+    *debug_step = 8;
+
     advertising_init();
+    *debug_step = 9;
+
     services_init();
+    *debug_step = 10;
+
     sensor_simulator_init();
+    *debug_step = 11;
+
     conn_params_init();
+    *debug_step = 12;
+
     buffer_init();
-    peer_manager_init();
+    *debug_step = 13;
 
-    // Re-enabling one at a time to find crash source
+    peer_manager_init();  // Now returns bool, won't crash
+    *debug_step = 14;
 
-    // TEST 1: LED init only
+    // Continue debug stepping
+    *debug_step = 15;
     ret_code_t led_err = nchorder_led_init();
-    if (led_err != NRF_SUCCESS)
-    {
-        NRF_LOG_WARNING("LED init failed: %d (LEDs won't work)", led_err);
-    }
 
-    // TEST 2: Storage init (LED passed)
-    ret_code_t storage_err = nchorder_storage_init();
-    if (storage_err != NRF_SUCCESS)
-    {
-        NRF_LOG_WARNING("Storage init failed: %d (configs won't persist)", storage_err);
-    }
+    *debug_step = 16;
+    // ret_code_t storage_err = nchorder_storage_init();  // SKIP - uses FDS which crashes
 
-    // TEST 4: nchorder_init with USB disabled
+    *debug_step = 17;
     nchorder_init();
 
-    // Start execution.
+    *debug_step = 18;
     NRF_LOG_INFO("nChorder XIAO firmware started.");
     timers_start();
+
+    *debug_step = 19;
     advertising_start(erase_bonds);
+
+    // DEBUG: Force all RGB LEDs OFF after all init complete
+    // Red has opposite polarity from Blue/Green
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 26));  // Red
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 30));  // Green
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));   // Blue
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 26));     // Red OFF (active low: SET=OFF)
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 30));     // Green OFF
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));      // Blue OFF
 
     // Enter main loop.
     for (;;)
     {
+        nrf_ble_lesc_request_handler();  // Process LESC requests
         idle_state_handle();
     }
 }

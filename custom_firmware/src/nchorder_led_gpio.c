@@ -18,20 +18,21 @@ static bool m_led_on = false;
 
 ret_code_t nchorder_led_init(void)
 {
-    if (m_initialized) {
-        return NRF_SUCCESS;
-    }
-
-    // Configure status LED as output
-    nrf_gpio_cfg_output(PIN_LED_STATUS);
-
-    // LED off initially (active low on most boards)
-    nrf_gpio_pin_set(PIN_LED_STATUS);
+    // DEBUG: Disabled entirely - don't touch any LED pins
+    // if (m_initialized) {
+    //     return NRF_SUCCESS;
+    // }
+    //
+    // // Configure status LED as output
+    // nrf_gpio_cfg_output(PIN_LED_STATUS);
+    //
+    // // LED off initially (active low on most boards)
+    // nrf_gpio_pin_set(PIN_LED_STATUS);
 
     m_initialized = true;
     m_led_on = false;
 
-    NRF_LOG_INFO("LED driver initialized (GPIO mode, pin %d)", PIN_LED_STATUS);
+    NRF_LOG_INFO("LED driver disabled for debugging");
 
     return NRF_SUCCESS;
 }
@@ -51,16 +52,17 @@ void nchorder_led_set_all(uint8_t r, uint8_t g, uint8_t b)
 
 ret_code_t nchorder_led_update(void)
 {
-    if (!m_initialized) {
-        return NRF_ERROR_INVALID_STATE;
-    }
-
-    // Active low LED control
-    if (m_led_on) {
-        nrf_gpio_pin_clear(PIN_LED_STATUS);
-    } else {
-        nrf_gpio_pin_set(PIN_LED_STATUS);
-    }
+    // DEBUG: Disabled to find what's turning on red LED
+    // if (!m_initialized) {
+    //     return NRF_ERROR_INVALID_STATE;
+    // }
+    //
+    // // Active low LED control
+    // if (m_led_on) {
+    //     nrf_gpio_pin_clear(PIN_LED_STATUS);
+    // } else {
+    //     nrf_gpio_pin_set(PIN_LED_STATUS);
+    // }
 
     return NRF_SUCCESS;
 }
