@@ -1,5 +1,5 @@
 /**
- * Twiddler 4 Custom Firmware - HID Report Handling
+ * Northern Chorder - HID Report Handling
  *
  * BLE HID keyboard and mouse report management
  */

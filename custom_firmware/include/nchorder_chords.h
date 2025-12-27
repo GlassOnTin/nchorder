@@ -1,5 +1,5 @@
 /**
- * Twiddler 4 Custom Firmware - Chord Detection and Mapping
+ * Northern Chorder - Chord Detection and Mapping
  *
  * Chord input handling for the Twiddler keyboard
  */

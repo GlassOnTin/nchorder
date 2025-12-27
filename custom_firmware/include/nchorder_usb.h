@@ -1,5 +1,5 @@
 /**
- * Twiddler 4 Custom Firmware - USB HID Driver
+ * Northern Chorder - USB HID Driver
  *
  * USB keyboard HID support for wired operation
  * Uses Nordic SDK app_usbd_hid_kbd class

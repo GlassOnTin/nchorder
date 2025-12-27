@@ -1,4 +1,4 @@
-# Northern Chorder Custom Firmware
+# Northern Chorder Firmware
 
 Open-source BLE/USB HID keyboard firmware for nRF52840-based chorded keyboards.
 

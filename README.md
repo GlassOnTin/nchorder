@@ -5,7 +5,7 @@ Open-source firmware and tools for nRF52840-based chorded keyboards.
 ## Overview
 
 This project provides:
-- **Custom firmware** for nRF52840-based chorded keyboards (BLE + USB HID)
+- **Firmware** for nRF52840-based chorded keyboards (BLE + USB HID)
 - **Python tools** for config file management, conversion, and analysis
 - **Community layouts** including MirrorWalk and variants
 - **Hardware documentation** for nRF52840-based chorded keyboards

@@ -1,4 +1,4 @@
-# Northern Chorder Custom Firmware Makefile
+# Northern Chorder Firmware Makefile
 # Based on Nordic SDK 17.1.0 ble_app_hids_keyboard example
 #
 # Build: make              (default: xiao)

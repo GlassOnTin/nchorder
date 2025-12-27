@@ -1,6 +1,6 @@
 # Northern Chorder Documentation
 
-Custom firmware for chording keyboards based on the nRF52840 SoC.
+Firmware for chording keyboards based on the nRF52840 SoC.
 
 ## Supported Hardware
 

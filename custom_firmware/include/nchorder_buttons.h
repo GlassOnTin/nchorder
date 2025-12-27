@@ -1,5 +1,5 @@
 /**
- * Twiddler 4 Custom Firmware - Button Scanning Driver
+ * Northern Chorder - Button Scanning Driver
  *
  * GPIO-based button input handling with interrupt-driven detection
  * All 16 buttons are on GPIO Port 0 with internal pull-ups (active-low)

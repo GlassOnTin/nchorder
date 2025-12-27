@@ -1,5 +1,5 @@
 /**
- * Twiddler 4 Custom Firmware - Chord Detection Implementation
+ * Northern Chorder - Chord Detection Implementation
  *
  * Implements the chord input state machine
  */
