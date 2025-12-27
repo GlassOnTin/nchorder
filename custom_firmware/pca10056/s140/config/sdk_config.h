@@ -1818,8 +1818,9 @@
 // <131073=> External Low Swing 
 // <196609=> External Full Swing 
 
+// XIAO nRF52840 has no 32.768 kHz crystal - use RC oscillator
 #ifndef NRFX_CLOCK_CONFIG_LF_SRC
-#define NRFX_CLOCK_CONFIG_LF_SRC 1
+#define NRFX_CLOCK_CONFIG_LF_SRC 0
 #endif
 
 // <o> NRFX_CLOCK_CONFIG_IRQ_PRIORITY  - Interrupt priority
@@ -4904,15 +4905,17 @@
 // <131073=> External Low Swing 
 // <196609=> External Full Swing 
 
+// XIAO nRF52840 has no 32.768 kHz crystal - use RC oscillator
 #ifndef CLOCK_CONFIG_LF_SRC
-#define CLOCK_CONFIG_LF_SRC 1
+#define CLOCK_CONFIG_LF_SRC 0
 #endif
 
 // <q> CLOCK_CONFIG_LF_CAL_ENABLED  - Calibration enable for LF Clock Source
  
 
+// Enable calibration for RC oscillator
 #ifndef CLOCK_CONFIG_LF_CAL_ENABLED
-#define CLOCK_CONFIG_LF_CAL_ENABLED 0
+#define CLOCK_CONFIG_LF_CAL_ENABLED 1
 #endif
 
 // <o> CLOCK_CONFIG_IRQ_PRIORITY  - Interrupt priority
@@ -6271,6 +6274,12 @@
 #ifndef APP_TIMER_ENABLED
 #define APP_TIMER_ENABLED 1
 #endif
+
+// Enable RTC1 for app_timer2 (drv_rtc driver)
+#ifndef APP_TIMER_V2_RTC1_ENABLED
+#define APP_TIMER_V2_RTC1_ENABLED 1
+#endif
+
 // <o> APP_TIMER_CONFIG_RTC_FREQUENCY  - Configure RTC prescaler.
  
 // <0=> 32768 Hz 
@@ -11958,40 +11967,42 @@
 // <1=> NRF_CLOCK_LF_SRC_XTAL 
 // <2=> NRF_CLOCK_LF_SRC_SYNTH 
 
+// XIAO nRF52840 has no 32.768 kHz crystal - use internal RC oscillator
 #ifndef NRF_SDH_CLOCK_LF_SRC
-#define NRF_SDH_CLOCK_LF_SRC 1
+#define NRF_SDH_CLOCK_LF_SRC 0
 #endif
 
-// <o> NRF_SDH_CLOCK_LF_RC_CTIV - SoftDevice calibration timer interval. 
+// <o> NRF_SDH_CLOCK_LF_RC_CTIV - SoftDevice calibration timer interval.
+// For RC oscillator: 16 = calibrate every 4 seconds (16 * 0.25s)
 #ifndef NRF_SDH_CLOCK_LF_RC_CTIV
-#define NRF_SDH_CLOCK_LF_RC_CTIV 0
+#define NRF_SDH_CLOCK_LF_RC_CTIV 16
 #endif
 
-// <o> NRF_SDH_CLOCK_LF_RC_TEMP_CTIV - SoftDevice calibration timer interval under constant temperature. 
+// <o> NRF_SDH_CLOCK_LF_RC_TEMP_CTIV - SoftDevice calibration timer interval under constant temperature.
 // <i> How often (in number of calibration intervals) the RC oscillator shall be calibrated
 // <i>  if the temperature has not changed.
-
+// 2 = recalibrate if temp unchanged for 2 intervals (8 seconds)
 #ifndef NRF_SDH_CLOCK_LF_RC_TEMP_CTIV
-#define NRF_SDH_CLOCK_LF_RC_TEMP_CTIV 0
+#define NRF_SDH_CLOCK_LF_RC_TEMP_CTIV 2
 #endif
 
 // <o> NRF_SDH_CLOCK_LF_ACCURACY  - External clock accuracy used in the LL to compute timing.
- 
-// <0=> NRF_CLOCK_LF_ACCURACY_250_PPM 
-// <1=> NRF_CLOCK_LF_ACCURACY_500_PPM 
-// <2=> NRF_CLOCK_LF_ACCURACY_150_PPM 
-// <3=> NRF_CLOCK_LF_ACCURACY_100_PPM 
-// <4=> NRF_CLOCK_LF_ACCURACY_75_PPM 
-// <5=> NRF_CLOCK_LF_ACCURACY_50_PPM 
-// <6=> NRF_CLOCK_LF_ACCURACY_30_PPM 
-// <7=> NRF_CLOCK_LF_ACCURACY_20_PPM 
-// <8=> NRF_CLOCK_LF_ACCURACY_10_PPM 
-// <9=> NRF_CLOCK_LF_ACCURACY_5_PPM 
-// <10=> NRF_CLOCK_LF_ACCURACY_2_PPM 
-// <11=> NRF_CLOCK_LF_ACCURACY_1_PPM 
 
+// <0=> NRF_CLOCK_LF_ACCURACY_250_PPM
+// <1=> NRF_CLOCK_LF_ACCURACY_500_PPM
+// <2=> NRF_CLOCK_LF_ACCURACY_150_PPM
+// <3=> NRF_CLOCK_LF_ACCURACY_100_PPM
+// <4=> NRF_CLOCK_LF_ACCURACY_75_PPM
+// <5=> NRF_CLOCK_LF_ACCURACY_50_PPM
+// <6=> NRF_CLOCK_LF_ACCURACY_30_PPM
+// <7=> NRF_CLOCK_LF_ACCURACY_20_PPM
+// <8=> NRF_CLOCK_LF_ACCURACY_10_PPM
+// <9=> NRF_CLOCK_LF_ACCURACY_5_PPM
+// <10=> NRF_CLOCK_LF_ACCURACY_2_PPM
+// <11=> NRF_CLOCK_LF_ACCURACY_1_PPM
+// For RC oscillator, must use 500 PPM (1) per Nordic requirements
 #ifndef NRF_SDH_CLOCK_LF_ACCURACY
-#define NRF_SDH_CLOCK_LF_ACCURACY 7
+#define NRF_SDH_CLOCK_LF_ACCURACY 1
 #endif
 
 // </h> 

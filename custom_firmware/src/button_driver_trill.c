@@ -22,6 +22,8 @@
 #include "nrf_log.h"
 #include "nrf_gpio.h"
 
+// simple_delay_ms is defined in nchorder_trill.c (included before this file)
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -29,11 +31,14 @@
 // Polling interval (ms)
 #define TRILL_POLL_INTERVAL_MS      15
 
-// Debounce time (ms) - same as GPIO driver
-#define TRILL_DEBOUNCE_MS           CHORD_DEBOUNCE_MS
+// Debounce time (ms) - longer than GPIO for capacitive sensors
+#define TRILL_DEBOUNCE_MS           30
 
-// Minimum touch size to register as button press
-#define TRILL_MIN_TOUCH_SIZE        100
+// Minimum touch size to register as button press (increased to reduce noise/voltage transients)
+#define TRILL_MIN_TOUCH_SIZE        300
+
+// Release threshold (lower than press threshold for hysteresis)
+#define TRILL_RELEASE_SIZE          150
 
 // ============================================================================
 // STATE
@@ -255,15 +260,6 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
     (void)event_size;
 
     ret_code_t err;
-    static uint32_t poll_count = 0;
-    static bool touch_was_active = false;
-
-    poll_count++;
-
-    // Log every 100 polls (~1.5 seconds) to confirm polling is running
-    if (poll_count % 100 == 0) {
-        NRF_LOG_INFO("Trill poll #%u running", poll_count);
-    }
 
     // Read all sensors
     bool any_touch = false;
@@ -284,18 +280,11 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
         if (err != NRF_SUCCESS) {
             NRF_LOG_WARNING("Trill ch%d read failed: 0x%08X", ch, err);
         } else if (m_sensors[ch].num_touches > 0) {
-            // Log touches at INFO level
-            NRF_LOG_INFO("Trill ch%d: %d touches", ch, m_sensors[ch].num_touches);
             any_touch = true;
         }
     }
 
-    // DEBUG: Send test key on new touch (edge-triggered)
-    if (any_touch && !touch_was_active) {
-        NRF_LOG_INFO("DEBUG: Touch detected! Sending test key 'A'");
-        debug_send_test_key();
-    }
-    touch_was_active = any_touch;
+    (void)any_touch;  // Suppress unused warning
 
     // Build button mask from sensor readings
     uint16_t new_raw_state = build_button_mask();
@@ -327,14 +316,6 @@ static void poll_timer_handler(void *p_context)
 {
     (void)p_context;
 
-    // DEBUG: Disabled - conflicts with debug LED on P0.06
-    // Toggle LED in interrupt context to verify timer is firing
-    // static uint8_t timer_count = 0;
-    // timer_count++;
-    // if (timer_count % 50 == 0) {
-    //     nrf_gpio_pin_toggle(PIN_LED_STATUS);
-    // }
-
     // Schedule polling work to run in main context (not interrupt)
     app_sched_event_put(NULL, 0, poll_scheduled_handler);
 }
@@ -346,6 +327,7 @@ static void poll_timer_handler(void *p_context)
 uint32_t buttons_init(void)
 {
     ret_code_t err_code;
+    uint8_t dummy;
 
     NRF_LOG_INFO("Trill buttons: Initializing");
 
@@ -359,8 +341,15 @@ uint32_t buttons_init(void)
     // Reset mux
     nchorder_i2c_mux_reset();
 
-    // Scan I2C bus (debug)
-    nchorder_i2c_scan();
+    // Probe MUX directly at address 0x70 (before any channel selection)
+    NRF_LOG_INFO("Trill buttons: Probing MUX at 0x%02X...", I2C_ADDR_MUX);
+    err_code = nchorder_i2c_read(I2C_ADDR_MUX, &dummy, 1);
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_ERROR("Trill buttons: MUX not responding! Error 0x%08X", err_code);
+        // Continue anyway to see what happens
+    } else {
+        NRF_LOG_INFO("Trill buttons: MUX responded (read 0x%02X)", dummy);
+    }
 
     // Initialize each Trill sensor
     for (int ch = 0; ch < MUX_NUM_CHANNELS; ch++) {
@@ -372,22 +361,89 @@ uint32_t buttons_init(void)
             continue;
         }
 
-        // Debug: scan this mux channel to see what devices are present
-        NRF_LOG_INFO("Trill buttons: Scanning mux channel %d...", ch);
-        nchorder_i2c_scan();
+        // All Trill sensors use default address 0x20, mux channel separates them
+        uint8_t addr = I2C_ADDR_TRILL;
 
-        // Channel 0 (Square) is at 0x28, channels 1-3 (Bars) are at 0x20
-        uint8_t addr = (ch == 0) ? 0x28 : I2C_ADDR_TRILL;
-        err_code = trill_init(&m_sensors[ch], addr);
+        // Initialize sensor inline to avoid function call overhead
+        trill_sensor_t *sensor = &m_sensors[ch];
+        static uint8_t identify_buf[4] = {0};
+
+        // Clear sensor state first
+        memset(sensor, 0, sizeof(trill_sensor_t));
+        sensor->i2c_addr = addr;
+
+        // First set read pointer to offset 0 (identify area)
+        uint8_t zero_offset = 0;
+        err_code = nchorder_i2c_write(addr, &zero_offset, 1);
         if (err_code != NRF_SUCCESS) {
-            // Try alternate address
-            addr = (ch == 0) ? I2C_ADDR_TRILL : 0x28;
-            NRF_LOG_WARNING("Trill buttons: Trying alternate addr 0x%02X...", addr);
-            err_code = trill_init(&m_sensors[ch], addr);
-            if (err_code != NRF_SUCCESS) {
-                NRF_LOG_WARNING("Trill buttons: Sensor ch%d init failed at both addresses", ch);
-            }
+            NRF_LOG_WARNING("Ch%d: Set read ptr failed: 0x%04X", ch, err_code);
+            continue;
         }
+
+        simple_delay_ms(2);  // Small delay after write
+
+        // Now read 4 bytes from offset 0
+        err_code = nchorder_i2c_read(addr, identify_buf, 4);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Identify read failed: 0x%04X", ch, err_code);
+            continue;
+        }
+
+        NRF_LOG_INFO("Ch%d: Raw %02X %02X %02X %02X", ch,
+                     identify_buf[0], identify_buf[1], identify_buf[2], identify_buf[3]);
+
+        // Check for FE header - if not FE, try assuming Bar sensor anyway
+        if (identify_buf[0] == 0xFE) {
+            sensor->device_type = identify_buf[1];
+            sensor->firmware_version = identify_buf[2];
+        } else {
+            // Unknown header - assume it's a capacitive touch sensor
+            // For ch0 (Trill Square), assume 2D
+            // For ch1-3 (Trill Bar address 0x20), assume 1D
+            NRF_LOG_WARNING("Ch%d: Unknown header 0x%02X, assuming %s",
+                            ch, identify_buf[0], (ch == 0) ? "Square" : "Bar");
+            sensor->device_type = (ch == 0) ? TRILL_TYPE_SQUARE : TRILL_TYPE_BAR;
+            sensor->firmware_version = 0;
+        }
+        sensor->is_2d = (sensor->device_type == TRILL_TYPE_SQUARE ||
+                         sensor->device_type == TRILL_TYPE_HEX);
+
+        NRF_LOG_INFO("Ch%d: Trill %s (fw=%d)", ch,
+                     trill_type_name(sensor->device_type), sensor->firmware_version);
+
+        // Step 3: Set mode to CENTROID
+        uint8_t mode_cmd[3] = {TRILL_OFFSET_COMMAND, TRILL_CMD_MODE, TRILL_MODE_CENTROID};
+        err_code = nchorder_i2c_write(addr, mode_cmd, 3);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Set mode failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(5);
+
+        // Step 4: Configure scan settings (speed=0 ultra fast, resolution=12 bits)
+        uint8_t scan_cmd[4] = {TRILL_OFFSET_COMMAND, TRILL_CMD_SCAN_SETTINGS, 0, 12};
+        err_code = nchorder_i2c_write(addr, scan_cmd, 4);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Scan settings failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(5);
+
+        // Step 5: Enable auto-scan
+        uint8_t autoscan_cmd[3] = {TRILL_OFFSET_COMMAND, TRILL_CMD_AUTO_SCAN, 1};
+        err_code = nchorder_i2c_write(addr, autoscan_cmd, 3);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Auto-scan failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(5);
+
+        // Step 6: Update baseline
+        uint8_t baseline_cmd[2] = {TRILL_OFFSET_COMMAND, TRILL_CMD_BASELINE_UPDATE};
+        err_code = nchorder_i2c_write(addr, baseline_cmd, 2);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Baseline update failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(10);
+
+        sensor->initialized = true;
     }
 
     // Count initialized sensors

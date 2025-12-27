@@ -130,10 +130,10 @@ SRC_FILES += \
 ifeq ($(BOARD),xiao)
   # XIAO nRF52840 with Trill capacitive sensors
   # Uses GPIO LED (no WS2812B), I2C for Trill sensors
+  # Note: nchorder_trill.c is #include'd into nchorder_buttons.c
   SRC_FILES += \
     $(PROJ_DIR)/src/nchorder_led_gpio.c \
     $(PROJ_DIR)/src/nchorder_i2c.c \
-    $(PROJ_DIR)/src/nchorder_trill.c \
     $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
 else
   # Twiddler4/DK: WS2812B LEDs via I2S

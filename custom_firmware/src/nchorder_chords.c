@@ -152,6 +152,7 @@ bool chord_update(chord_context_t *ctx, chord_t buttons)
             if (buttons == 0) {
                 // All buttons released - fire the chord
                 ctx->state = CHORD_STATE_IDLE;
+                ctx->release_time = app_timer_cnt_get();
                 chord_completed = true;
             } else if (buttons != ctx->current_chord) {
                 // Buttons changed
@@ -167,6 +168,7 @@ bool chord_update(chord_context_t *ctx, chord_t buttons)
             if (buttons == 0) {
                 // Released
                 ctx->state = CHORD_STATE_IDLE;
+                ctx->release_time = app_timer_cnt_get();
                 chord_completed = true;
             } else if (buttons != ctx->current_chord) {
                 // Some buttons released but not all
@@ -177,6 +179,7 @@ bool chord_update(chord_context_t *ctx, chord_t buttons)
         case CHORD_STATE_RELEASING:
             if (buttons == 0) {
                 ctx->state = CHORD_STATE_IDLE;
+                ctx->release_time = app_timer_cnt_get();
                 chord_completed = true;
             }
             break;

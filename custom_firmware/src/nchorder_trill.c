@@ -8,8 +8,17 @@
 #include "nchorder_trill.h"
 #include "nchorder_i2c.h"
 #include "nchorder_config.h"
-#include "nrf_delay.h"
 #include "nrf_log.h"
+
+// Simple busy-wait delay (avoid nrf_delay_ms which may hang without DWT init)
+static void simple_delay_ms(uint32_t ms)
+{
+    // Approximate delay - 64MHz CPU, ~10 cycles per iteration
+    volatile uint32_t count = ms * 6400;
+    while (count--) {
+        __NOP();
+    }
+}
 
 // ============================================================================
 // INTERNAL HELPERS
@@ -70,7 +79,7 @@ ret_code_t trill_init(trill_sensor_t *sensor, uint8_t i2c_addr)
     memset(sensor, 0, sizeof(trill_sensor_t));
     sensor->i2c_addr = i2c_addr;
 
-    // Read device info from offset 0 (discovered empirically)
+    // Read device info from offset 0
     // Format: FE <type> <fw_ver> <checksum?>
     uint8_t zero_offset = 0;
     err = nchorder_i2c_write(i2c_addr, &zero_offset, 1);  // Set read pointer to 0
@@ -127,7 +136,7 @@ ret_code_t trill_init(trill_sensor_t *sensor, uint8_t i2c_addr)
         // Non-fatal, continue
     }
 
-    nrf_delay_ms(5);
+    simple_delay_ms(5);
 
     // Step 3.5: Enable auto-scan (sensor continuously updates data)
     uint8_t auto_scan_param = 1;  // 1 = enable
@@ -137,7 +146,7 @@ ret_code_t trill_init(trill_sensor_t *sensor, uint8_t i2c_addr)
         // Non-fatal, continue
     }
 
-    nrf_delay_ms(5);
+    simple_delay_ms(5);
 
     // Step 4: Update baseline
     err = trill_update_baseline(sensor);
@@ -222,7 +231,7 @@ ret_code_t trill_set_mode(trill_sensor_t *sensor, uint8_t mode)
     ret_code_t err = trill_send_command(sensor->i2c_addr, TRILL_CMD_MODE, &param, 1);
 
     if (err == NRF_SUCCESS) {
-        nrf_delay_ms(5);  // Allow mode change to take effect
+        simple_delay_ms(5);  // Allow mode change to take effect
     }
 
     return err;
@@ -237,7 +246,7 @@ ret_code_t trill_update_baseline(trill_sensor_t *sensor)
     ret_code_t err = trill_send_command(sensor->i2c_addr, TRILL_CMD_BASELINE_UPDATE, NULL, 0);
 
     if (err == NRF_SUCCESS) {
-        nrf_delay_ms(10);  // Allow baseline update to complete
+        simple_delay_ms(10);  // Allow baseline update to complete
     }
 
     return err;

@@ -444,6 +444,179 @@ If your XIAO has a UF2 bootloader:
 2. Copy the .uf2 file to the drive
 3. Device reboots automatically
 
+## Troubleshooting & Lessons Learned
+
+This section documents issues encountered during development and their solutions.
+
+### CRITICAL: Never Block in BLE Applications
+
+**Symptom:** Device crashes with SoftDevice fault 0x4001 after sending BLE HID keypress.
+
+**Root Cause:** The SoftDevice (BLE stack) requires regular processing of its event queue. Blocking delays (even 500ms) prevent this, causing TX buffer exhaustion.
+
+```c
+// BAD - Will crash!
+void send_key(uint8_t keycode) {
+    ble_hid_send_key(keycode);
+    nrf_delay_ms(500);        // Blocks BLE event processing
+    ble_hid_send_release();   // By now, SoftDevice has crashed
+}
+
+// GOOD - Non-blocking
+void send_key(uint8_t keycode) {
+    ble_hid_send_key(keycode);
+    // Key release handled by app_timer callback
+}
+```
+
+**Rule:** In BLE applications, never use blocking delays longer than a few milliseconds. Use app_timers for delayed operations.
+
+### LFCLK Configuration (XIAO nRF52840)
+
+**Symptom:** Device hangs at startup, never reaches main loop.
+
+**Root Cause:** The XIAO nRF52840 has no external 32.768 kHz crystal. The default SDK config expects one.
+
+**Fix:** Configure LFCLK to use the internal RC oscillator in `sdk_config.h`:
+
+```c
+#define NRFX_CLOCK_CONFIG_LF_SRC 0           // 0 = RC oscillator
+#define NRF_SDH_CLOCK_LF_SRC 0               // For SoftDevice
+#define NRF_SDH_CLOCK_LF_RC_CTIV 16          // Calibration interval
+#define NRF_SDH_CLOCK_LF_RC_TEMP_CTIV 2      // Temperature compensation
+```
+
+### nrf_delay_ms Hangs
+
+**Symptom:** `nrf_delay_ms()` hangs indefinitely.
+
+**Root Cause:** The delay function uses the DWT (Debug Watchpoint and Trace) cycle counter. If DWT isn't initialized, it waits forever.
+
+**Workaround:** Use a simple busy-wait delay instead:
+
+```c
+static void simple_delay_ms(uint32_t ms)
+{
+    // Approximate delay - 64MHz CPU, ~10 cycles per iteration
+    volatile uint32_t count = ms * 6400;
+    while (count--) {
+        __NOP();
+    }
+}
+```
+
+**Note:** This is less accurate than `nrf_delay_ms()` but doesn't depend on DWT.
+
+### BLE Bonds Cleared on Reset
+
+**Symptom:** After USB disconnect (which causes a brief power brownout and reset), the device won't reconnect to the previously paired host. Re-pairing is required.
+
+**Root Cause:** `advertising_start(true)` in the boot sequence erases all stored bonds.
+
+**Fix:** Use `advertising_start(false)` to preserve bonds:
+
+```c
+// In main() after BLE init
+advertising_start(false);  // Keep existing bonds
+
+// Re-pairing is still allowed via PM_EVT_CONN_SEC_CONFIG_REQ handler
+```
+
+### Trill Sensor I2C Protocol
+
+**Symptom:** I2C read returns garbage data or wrong device type.
+
+**Root Cause:** Trill sensors require setting the read pointer before reading data.
+
+**Correct Protocol:**
+
+```c
+// Step 1: Set read pointer to offset 0
+uint8_t zero = 0;
+nchorder_i2c_write(TRILL_ADDR, &zero, 1);
+
+// Step 2: Small delay for pointer to take effect
+simple_delay_ms(2);
+
+// Step 3: Read data
+uint8_t buf[4];
+nchorder_i2c_read(TRILL_ADDR, buf, 4);
+
+// Response format: 0xFE <device_type> <firmware_version> <checksum>
+// Device types: 1=Bar, 2=Square, 3=Craft, 4=Ring, 5=Hex, 6=Flex
+```
+
+### Touch Threshold Tuning
+
+**Symptom:** False positive button presses, especially during USB plug/unplug.
+
+**Root Cause:** Voltage transients cause momentary capacitance changes that register as touches.
+
+**Fix:** Increase the minimum touch size threshold:
+
+```c
+// button_driver_trill.c
+#define TRILL_MIN_TOUCH_SIZE    300   // Minimum size to register (was 200)
+#define TRILL_RELEASE_SIZE      150   // Hysteresis for release (was 100)
+```
+
+Higher thresholds reduce sensitivity but eliminate spurious touches.
+
+### J-Link Debugging External Targets
+
+When debugging a standalone XIAO (not connected to the DK's nRF52840):
+
+**Symptom:** J-Link cannot connect: "Could not find core in Coresight setup"
+
+**Solution:** The J-Link needs SWDSEL asserted to know it should use external SWD:
+
+1. Connect J-Link SWD pins (SWDIO, SWDCLK, GND) to XIAO
+2. Connect XIAO's VDD to J-Link's VTref (pin 1) - tells J-Link the target voltage
+3. Jump SWDSEL to VDD - enables external target mode
+
+```
+DK J-Link Header          XIAO
+┌─────────────┐           ┌─────┐
+│ SWDIO ──────│───────────│ SWD │
+│ SWDCLK ─────│───────────│ SCK │
+│ GND ────────│───────────│ GND │
+│ VTref ──────│───────────│ 3V3 │
+│ SWDSEL ─────│──┬────────│ 3V3 │  (jumper to VTref)
+└─────────────┘  │
+```
+
+### SoftDevice Must Be Flashed
+
+**Symptom:** Device resets immediately after flashing, or BLE doesn't work.
+
+**Root Cause:** `nrfjprog --eraseall` also erases the SoftDevice. The application expects it to be present.
+
+**Fix:** Always flash SoftDevice before the application:
+
+```bash
+# Full recovery procedure
+nrfjprog --eraseall
+nrfjprog --program ../sdk/nRF5_SDK_17.1.0/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex
+nrfjprog --program _build/nrf52840_xxaa.hex --sectorerase
+nrfjprog --reset
+```
+
+### Debug RAM Markers
+
+During development, we used fixed RAM addresses for debugging (inspectable via J-Link `mem32` command):
+
+| Address | Purpose |
+|---------|---------|
+| 0x20030090 | Crash info (fault ID, PC, error code) |
+
+The crash info is written by the fault handlers and survives soft resets, allowing post-mortem debugging:
+
+```bash
+# After a crash, before power cycle:
+nrfjprog --memrd 0x20030090 --n 16
+# Shows: fault_marker, PC, info_ptr, err_code
+```
+
 ## Further Reading
 
 - [nRF5 SDK Documentation](https://infocenter.nordicsemi.com/topic/sdk_nrf5_v17.1.0/index.html)

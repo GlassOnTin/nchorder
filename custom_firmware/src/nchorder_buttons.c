@@ -19,7 +19,9 @@
 
 #if defined(BUTTON_DRIVER_TRILL)
 
-// Include Trill button driver implementation
+// Include Trill sensor driver and button driver implementation
+// Both included here to ensure they're in the same compilation unit
+#include "nchorder_trill.c"
 #include "button_driver_trill.c"
 
 #else // GPIO Driver
