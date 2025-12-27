@@ -62,7 +62,7 @@ arm-none-eabi-gcc --version
 ### Building
 
 ```bash
-cd custom_firmware
+cd firmware
 
 # Build for different targets
 make BOARD=xiao       # Northern Chorder (Trill sensors)

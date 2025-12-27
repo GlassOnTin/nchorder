@@ -19,7 +19,7 @@ venv/
 sdk/
 
 # Build artifacts
-custom_firmware/**/_build/
+firmware/**/_build/
 **/*.o
 **/*.d
 

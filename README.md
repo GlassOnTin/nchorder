@@ -49,11 +49,11 @@ pip install -e .
 Requires ARM GCC toolchain and Nordic nRF5 SDK 17.1.0.
 
 ```bash
-cd custom_firmware/pca10056/s140/armgcc
+cd firmware/pca10056/s140/armgcc
 make
 ```
 
-See `custom_firmware/README.md` for detailed build and flash instructions.
+See `firmware/README.md` for detailed build and flash instructions.
 
 ## Python Tools
 
@@ -112,7 +112,7 @@ The `docs/` directory contains hardware documentation:
 ```
 nchorder/
 ├── src/nchorder_tools/     # Python config tools
-├── custom_firmware/        # nRF52840 BLE/USB HID firmware
+├── firmware/        # nRF52840 BLE/USB HID firmware
 ├── configs/                # Community chord layouts
 ├── docs/                   # Hardware documentation
 ├── photos/                 # Hardware teardown photos

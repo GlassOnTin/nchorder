@@ -34,7 +34,7 @@ Requires ARM GCC toolchain and Nordic nRF5 SDK 17.1.0.
 sudo apt install gcc-arm-none-eabi
 
 # Build firmware
-cd custom_firmware/pca10056/s140/armgcc
+cd firmware/pca10056/s140/armgcc
 make
 
 # Output: _build/nrf52840_xxaa.hex (~108KB)
@@ -62,7 +62,7 @@ nrfjprog --reset
 ## File Structure
 
 ```
-custom_firmware/
+firmware/
 ├── main.c                      # Main firmware - BLE/USB HID integration
 ├── MEMORY_MAP.md               # Hardware & memory documentation
 ├── pca10056/s140/armgcc/

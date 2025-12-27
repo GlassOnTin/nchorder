@@ -30,7 +30,7 @@ The Makefile expects SDK at: `sdk/nRF5_SDK_17.1.0_ddde560/`
 ## Building
 
 ```bash
-cd custom_firmware/pca10056/s140/armgcc
+cd firmware/pca10056/s140/armgcc
 
 # Clean build
 make clean
