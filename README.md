@@ -22,40 +22,61 @@ This project provides:
 | Python tools (79 tests) | Working |
 | Consumer control (media keys) | Not implemented |
 | RGB LEDs | Not implemented |
-| Touchpad | Not implemented |
+| Optical sensor (mouse) | Not implemented |
 
-## Hardware
+## Supported Hardware
 
-Designed for chorded keyboards using the **EByte E73-2G4M08S1C** module:
+| Board | Description | Build |
+|-------|-------------|-------|
+| **nChorder XIAO** | Seeed XIAO nRF52840 + Trill capacitive sensors | `make` (default) |
+| **nRF52840-DK** | Nordic development kit (4 buttons for testing) | `make BOARD=dk` |
+| **Twiddler 4** | Commercial chorded keyboard (EByte E73 module) | `make BOARD=twiddler4` |
 
-| Spec | Value |
-|------|-------|
-| MCU | Nordic nRF52840 (ARM Cortex-M4F @ 64MHz) |
-| Flash | 1 MB |
-| RAM | 256 KB |
-| Connectivity | BLE 5.0, USB 2.0 |
-| Buttons | 16 direct GPIO inputs |
+All boards use the Nordic nRF52840 SoC (ARM Cortex-M4F @ 64MHz, 1MB flash, 256KB RAM).
 
-## Installation
+## Firmware
 
-### Python Tools
+The [firmware/](firmware/) directory contains the nRF52840 BLE/USB HID implementation.
+
+### Quick Start
+
+```bash
+# Install ARM GCC toolchain
+sudo apt install gcc-arm-none-eabi
+
+# Download Nordic SDK 17.1.0
+cd firmware
+wget https://nsscprodmedia.blob.core.windows.net/prod/software-and-other-downloads/sdks/nrf5/binaries/nrf5_sdk_17.1.0_ddde560.zip
+unzip nrf5_sdk_17.1.0_ddde560.zip -d sdk/
+
+# Build (default: XIAO with Trill sensors)
+make
+
+# Flash via J-Link
+make flash
+```
+
+### Build Options
+
+```bash
+make                    # XIAO nRF52840 (default)
+make BOARD=dk           # nRF52840-DK
+make BOARD=twiddler4    # Twiddler 4
+make flash              # Flash application (preserves SoftDevice)
+make flash_softdevice   # Flash Nordic BLE stack
+```
+
+See [firmware/README.md](firmware/README.md) for detailed instructions.
+
+## Python Tools
+
+### Installation
 
 ```bash
 pip install -e .
 ```
 
-### Firmware
-
-Requires ARM GCC toolchain and Nordic nRF5 SDK 17.1.0.
-
-```bash
-cd firmware/pca10056/s140/armgcc
-make
-```
-
-See `firmware/README.md` for detailed build and flash instructions.
-
-## Python Tools
+### Usage
 
 ```bash
 # Show config info
@@ -99,24 +120,21 @@ The `configs/` directory contains:
 
 ## Documentation
 
-The `docs/` directory contains hardware documentation:
+See [docs/README.md](docs/README.md) for full documentation.
 
-- **01-PRODUCT_OVERVIEW** - Chorded keyboard basics
-- **02-HARDWARE_RE** - PCB teardown and component ID
-- **03-GPIO_DISCOVERY** - Button-to-pin mapping
-- **04-I2C_ANALYSIS** - I2C bus and device identification
-- **06-CONFIG_FORMAT** - Binary config file structure
+- [**nchorder/**](docs/nchorder/) - XIAO hardware wiring and firmware notes
+- [**twiddler4/**](docs/twiddler4/) - Twiddler 4 reverse engineering (GPIO, I2C, config format)
 
 ## Directory Structure
 
 ```
 nchorder/
-├── src/nchorder_tools/     # Python config tools
-├── firmware/        # nRF52840 BLE/USB HID firmware
-├── configs/                # Community chord layouts
-├── docs/                   # Hardware documentation
-├── photos/                 # Hardware teardown photos
-└── tests/                  # Python test suite
+├── firmware/           # nRF52840 BLE/USB HID firmware
+├── src/nchorder_tools/ # Python config tools
+├── configs/            # Community chord layouts
+├── docs/               # Hardware documentation
+├── photos/             # Hardware photos
+└── tests/              # Python test suite
 ```
 
 ## License
