@@ -100,7 +100,10 @@ static void debounce_timer_handler(void *p_context)
     // Only update if state matches raw state (stable)
     if (current_state == m_raw_state) {
         if (current_state != m_button_state) {
+            uint16_t old_state = m_button_state;
             m_button_state = current_state;
+
+            NRF_LOG_INFO("Button state: 0x%04X -> 0x%04X", old_state, current_state);
 
             // Call callback if registered
             if (m_callback != NULL) {
@@ -118,11 +121,11 @@ static void debounce_timer_handler(void *p_context)
  */
 static void gpiote_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 {
-    (void)pin;
     (void)action;
 
     // Read current raw state
     m_raw_state = read_gpio_state();
+    NRF_LOG_INFO("GPIO event: pin=%d, raw=0x%04X", pin, m_raw_state);
 
     // Start/restart debounce timer
     if (!m_debounce_pending) {
@@ -172,13 +175,13 @@ uint32_t buttons_init(void)
         // Skip pins on Port 1 (unused/disabled buttons on DK)
         // PIN_UNUSED is on Port 1, real buttons are on Port 0
         if (pin >= 32) {
-            NRF_LOG_DEBUG("Buttons: Skipping %s (pin %d on Port 1, disabled)", m_button_names[i], pin);
+            NRF_LOG_INFO("Buttons: Skipping %s (pin %d on Port 1, disabled)", m_button_names[i], pin);
             continue;
         }
 
         // Skip if we already initialized this pin
         if (initialized_pins & (1ULL << pin)) {
-            NRF_LOG_DEBUG("Buttons: Skipping %s (pin %d already initialized)", m_button_names[i], pin);
+            NRF_LOG_INFO("Buttons: Skipping %s (pin %d already initialized)", m_button_names[i], pin);
             continue;
         }
 
@@ -190,7 +193,7 @@ uint32_t buttons_init(void)
 
         nrfx_gpiote_in_event_enable(pin, true);
         initialized_pins |= (1ULL << pin);
-        NRF_LOG_DEBUG("Buttons: Pin P0.%02d configured for %s", pin, m_button_names[i]);
+        NRF_LOG_INFO("Buttons: Pin P0.%02d configured for %s", pin, m_button_names[i]);
     }
 
     // Read initial state

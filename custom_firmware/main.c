@@ -2301,7 +2301,11 @@ static void nchorder_init(void)
         // Don't fail - USB is optional, BLE still works
     }
 #else
-    NRF_LOG_INFO("USB disabled (XIAO: power event crash, DK: no USB HID support)");
+#if defined(BOARD_XIAO_NRF52840)
+    NRF_LOG_INFO("USB disabled (XIAO: power event causes crash)");
+#else
+    NRF_LOG_INFO("USB disabled (DK: BLE-only testing mode)");
+#endif
     (void)err_code;  // Suppress unused warning
 #endif
 
@@ -2357,18 +2361,36 @@ int main(void)
     nchorder_led_init();
     nchorder_init();
 
+#if defined(BOARD_XIAO_NRF52840)
     NRF_LOG_INFO("nChorder XIAO firmware started.");
+#elif defined(BOARD_IS_DK)
+    NRF_LOG_INFO("nChorder DK firmware started.");
+#else
+    NRF_LOG_INFO("nChorder Twiddler4 firmware started.");
+#endif
     timers_start();
 
     advertising_start(false);  // Keep bonds across resets
 
-    // Turn off LEDs (active low)
+#if defined(BOARD_XIAO_NRF52840)
+    // XIAO: Turn off RGB LED (active low)
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 26));  // Red
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 30));  // Green
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));   // Blue
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 26));     // Red OFF
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 30));     // Green OFF
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));      // Blue OFF
+#elif defined(BOARD_IS_DK)
+    // DK: LEDs are active low, turn them all off except LED1 (status)
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 13));  // LED1
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 14));  // LED2
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 15));  // LED3
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 16));  // LED4
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 13));     // LED1 OFF
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 14));     // LED2 OFF
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 15));     // LED3 OFF
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 16));     // LED4 OFF
+#endif
 
     // Enter main loop.
     for (;;)
