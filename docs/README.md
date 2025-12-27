@@ -39,7 +39,7 @@ Useful for testing BLE HID without custom hardware.
 Commercial chording keyboard hardware:
 - **MCU**: nRF52840 via EByte E73-2G4M08S1C module
 - **Input**: 16 mechanical buttons (4 thumb + 12 finger)
-- **I2C**: Azoteq IQS5xx touchpad (P0.30/P0.31)
+- **I2C**: Optical motion sensor (P0.30/P0.31) - unidentified
 - **LEDs**: WS2812B/SK6812 addressable RGB (via I2S)
 - **Debug**: SWD header (J2), I2C header (J3)
 

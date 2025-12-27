@@ -107,7 +107,7 @@ sudo evtest /dev/input/eventX  # Select keyboard device
 - **Consumer Control**: Media keys (volume, play/pause)
 - **RGB LEDs**: WS2812 status indicators via I2S
 - **True Mouse HID**: Actual mouse reports (currently mapped to keys)
-- **Touchpad**: IQS5xx touch controller support
+- **Optical Sensor**: Motion sensor support (unidentified chip)
 - **System Chords**: Config switching, sleep mode
 
 ## Contributing
@@ -116,7 +116,7 @@ Contributions welcome for:
 - Consumer control HID descriptor and report handling
 - RGB LED driver (WS2812/SK6812 via I2S peripheral)
 - True mouse HID reports with separate report ID
-- Touchpad I2C driver for IQS5xx
+- Optical motion sensor I2C driver
 
 ## Safety
 

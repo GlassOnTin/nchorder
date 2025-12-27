@@ -30,7 +30,7 @@ A **chording keyboard** produces characters by pressing multiple keys simultaneo
 | Flash | 1MB internal |
 | RAM | 256KB |
 | Battery | Li-ion AAA-size (SACINO 10440, 3.7V 350mAh) |
-| Touchpad | Azoteq IQS5xx optical controller |
+| Optical Sensor | Unidentified motion sensor (mouse-like) |
 | Storage | FAT12 filesystem (flash partition) |
 | USB Interface | Composite: HID Keyboard + Mouse + Consumer Control + Mass Storage |
 
@@ -56,8 +56,8 @@ The main PCB contains:
 
 Connected via J6 (12-pin FFC), the thumb board contains:
 - **4 thumb buttons**: T1 (N), T2 (A), T3 (E), T4 (SP) - labels shown are for left-hand models
-- **L1, L2, L3**: RGB status LEDs (I2C controlled)
-- **Touchpad**: Optical sensor for mouse cursor control
+- **L1, L2, L3**: RGB status LEDs (WS2812 addressable)
+- **Optical sensor**: Mouse cursor control (unidentified chip)
 
 ## Button Layout
 
@@ -81,7 +81,7 @@ When connected via USB, the Twiddler 4 appears as a **composite device** with fo
 
 1. **HID Keyboard**: Standard keyboard with modifier keys + 3 simultaneous keycodes
 2. **HID Consumer Control**: Media keys (volume, play/pause, etc.)
-3. **HID Mouse**: 3-button mouse with X/Y movement and scroll wheel (via touchpad)
+3. **HID Mouse**: 3-button mouse with X/Y movement and scroll wheel (via optical sensor)
 4. **Mass Storage**: FAT12 filesystem containing configuration files
 
 The mass storage interface exposes:
@@ -128,10 +128,10 @@ USB-C ──────────────┤  │    E73-2G4M08S1C Module
                     │    │        │            │     │    │
                     │    │        ▼            ▼     │    │
                     │    │  ┌──────────┐  ┌───────┐  │    │
-                    │    │  │ 4 Thumb  │  │Touch- │  │    │
-                    │    │  │ Buttons  │  │pad    │  │    │
-                    │    │  └──────────┘  │IQS5xx │  │    │
-                    │    │                └───────┘  │    │
+                    │    │  │ 4 Thumb  │  │Optical│  │    │
+                    │    │  │ Buttons  │  │Sensor │  │    │
+                    │    │  └──────────┘  └───────┘  │    │
+                    │    │                          │    │
                     │    │  ┌────────────────────┐   │    │
                     │    │  │  RGB LEDs L1-L3    │   │    │
                     │    │  │  (I2S data line)   │   │    │

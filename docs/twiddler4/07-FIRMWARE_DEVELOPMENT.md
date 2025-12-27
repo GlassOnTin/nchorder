@@ -238,7 +238,7 @@ Key structures:
 
 ## Not Yet Implemented
 
-- [ ] Touchpad (I2C IQS5xx driver)
+- [ ] Optical sensor (I2C driver - chip unidentified)
 - [ ] System chords (config switching, sleep)
 - [ ] USB mass storage (config editing)
 - [ ] Mouse button chords (partial)

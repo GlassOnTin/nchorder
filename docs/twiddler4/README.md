@@ -12,7 +12,7 @@ Hardware documentation for the Twiddler 4 chording keyboard, useful for custom f
 - I2C bus configuration and connected devices
 - Configuration file format specification
 
-**The device**: Twiddler 4 is a one-handed chording keyboard with 16 buttons, Bluetooth/USB connectivity, and a touchpad. It uses a Nordic nRF52840 microcontroller.
+**The device**: Twiddler 4 is a one-handed chording keyboard with 16 buttons, Bluetooth/USB connectivity, and an optical motion sensor for mouse control. It uses a Nordic nRF52840 microcontroller.
 
 ## Document Index
 
@@ -33,7 +33,7 @@ Hardware documentation for the Twiddler 4 chording keyboard, useful for custom f
 | MCU | Nordic nRF52840 (ARM Cortex-M4F @ 64MHz) in EByte E73-2G4M08S1C module |
 | Buttons | 16 direct GPIO inputs (NOT a matrix), active low with internal pull-ups |
 | I2C | P0.30 (SDA), P0.31 (SCL) - exposed on J3 debug header |
-| Touchpad | Azoteq IQS5xx @ I2C address 0x74 |
+| Optical Sensor | Unidentified motion sensor @ I2C address 0x74 |
 | RGB LEDs | WS2812/SK6812 addressable LEDs (L1, L2, L3 on thumb board) |
 | Config | Binary format with header, chord table, and optional string table |
 

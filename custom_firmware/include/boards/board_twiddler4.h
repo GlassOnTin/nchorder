@@ -61,11 +61,11 @@
 }
 
 // ============================================================================
-// I2C BUS (TWI0) - Touchpad and LEDs
+// I2C BUS (TWI0) - Optical sensor and LEDs
 // ============================================================================
 #define PIN_I2C_SDA       NRF_GPIO_PIN_MAP(0, 30)  // J3 pin 3
 #define PIN_I2C_SCL       NRF_GPIO_PIN_MAP(0, 31)  // J3 pin 2
-#define TOUCHPAD_I2C_ADDR 0x74                     // Azoteq IQS5xx
+#define TOUCHPAD_I2C_ADDR 0x74                     // Optical sensor (unidentified)
 
 // ============================================================================
 // LED PINS

@@ -19,9 +19,9 @@ I2C (Inter-Integrated Circuit) is a two-wire serial protocol for connecting peri
 
 ## The Challenge
 
-The Twiddler 4 has two I2C devices:
-- Touchpad controller (Azoteq IQS5xx)
-- RGB LEDs on thumb board
+The Twiddler 4 has I2C devices:
+- Optical motion sensor (unidentified - see photos/twiddler4/21_touch_sensor.jpg)
+- RGB LEDs on thumb board (WS2812, not I2C - uses single-wire protocol)
 
 **Question**: Which GPIO pins are SCL and SDA?
 
@@ -91,19 +91,19 @@ A logic analyzer is even better - it can decode I2C protocol and show device add
 
 ## I2C Devices on the Bus
 
-### Touchpad: Azoteq IQS5xx
+### Optical Motion Sensor (Unidentified)
 
 | Parameter | Value |
 |-----------|-------|
-| Device | Azoteq IQS5xx (IQS550/572/525-B000) |
-| Default I2C Address | 0x74 (7-bit) - from datasheet |
+| Device | Unknown optical sensor (mouse-type) |
+| I2C Address | 0x74 (7-bit) - observed on bus |
 | Write Address | 0xE8 (0x74 << 1 \| 0) |
 | Read Address | 0xE9 (0x74 << 1 \| 1) |
-| Function | Optical touchpad controller |
+| Function | Mouse pointer movement |
 
-**Datasheet**: https://www.azoteq.com/images/stories/pdf/iqs5xx-b000_trackpad_datasheet.pdf
+**Photo**: See `photos/twiddler4/21_touch_sensor.jpg` - shows optical sensor module similar to those used in computer mice.
 
-**Note**: Address is from datasheet default. Actual address not verified via logic analyzer.
+**Note**: The sensor type has not been positively identified. It is NOT an Azoteq capacitive touchpad as previously assumed. Logic analyzer capture needed to determine protocol.
 
 ### RGB LEDs: Addressable (WS2812/SK6812)
 

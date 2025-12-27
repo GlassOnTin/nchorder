@@ -118,7 +118,7 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 
 **J6 FFC Pinout** (12 pins):
 - 4 pins: Thumb button GPIO lines
-- 2 pins: I2C (SDA, SCL) for touchpad
+- 2 pins: I2C (SDA, SCL) for optical sensor
 - 1 pin: I2S data for RGB LEDs
 - 2 pins: Power (VCC, GND)
 - 3 pins: Unknown/reserved
@@ -215,7 +215,7 @@ With power applied, use multimeter voltage mode:
 |------------|--------------|---------|
 | USBD | 0x40027000 | USB HID + Mass Storage |
 | GPIO P0/P1 | 0x50000000 | Direct button inputs |
-| TWI0 | 0x40003000 | Touchpad I2C |
+| TWI0 | 0x40003000 | Optical sensor I2C |
 | GPIOTE | 0x40006000 | Button interrupts |
 | I2S | 0x40025000 | RGB LED data (WS2812) |
 | SAADC | 0x40007000 | Battery monitoring |
