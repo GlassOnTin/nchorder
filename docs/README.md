@@ -1,36 +1,77 @@
 # Northern Chorder Documentation
 
-Documentation for chording keyboard development: reverse engineering the Twiddler 4 and building custom hardware.
+Custom firmware for chording keyboards based on the nRF52840 SoC.
 
-## Sections
+## Supported Hardware
 
-| Section | Description |
-|---------|-------------|
-| [twiddler4/](twiddler4/) | Twiddler 4 hardware reverse engineering, GPIO mapping, config format |
-| [nchorder/](nchorder/) | Custom capacitive touch chording keyboard design |
+| Board | Description | Build Command |
+|-------|-------------|---------------|
+| [nChorder XIAO](nchorder/) | Custom capacitive touch chorder (XIAO nRF52840 + Trill sensors) | `make` (default) |
+| [nRF52840-DK](nchorder/) | Nordic development kit for testing (4 buttons) | `make BOARD=dk` |
+| [Twiddler 4](twiddler4/) | Commercial chording keyboard by Tek Gear | `make BOARD=twiddler4` |
 
-## Project Overview
+## Hardware Documentation
 
-This project has two parts:
+### Northern Chorder (nChorder XIAO)
 
-1. **Twiddler 4 Analysis** - Reverse engineering an existing commercial chording keyboard to understand:
-   - nRF52840-based hardware design
-   - GPIO button mapping
-   - I2C peripherals (touchpad)
-   - Configuration file format
+Custom chording keyboard using capacitive touch sensors:
+- **MCU**: Seeed XIAO nRF52840-Plus
+- **Input**: Bela Trill capacitive touch sensors (1 Square + 3 Bars)
+- **Interface**: I2C via PCA9548 multiplexer
+- **Connection**: BLE HID (USB disabled due to power event crash)
 
-2. **Northern Chorder Build** - Custom hardware using:
-   - Seeed XIAO nRF52840-Plus (MCU)
-   - Bela Trill capacitive touch sensors (instead of mechanical buttons)
-   - I2C multiplexer for sensor addressing
+Documentation:
+- [Hardware wiring](nchorder/HARDWARE.md)
+- [Firmware notes](nchorder/FIRMWARE.md)
 
-## Quick Links
+### nRF52840-DK
 
-**Twiddler 4:**
-- [Hardware overview](twiddler4/02-HARDWARE_RE.md)
+Nordic's development kit for firmware testing:
+- **MCU**: nRF52840 (on-board)
+- **Input**: 4 buttons (SW1-SW4) mapped to thumb buttons T1-T4
+- **LEDs**: 4 LEDs (active-low)
+- **Debug**: On-board J-Link, RTT logging
+
+Useful for testing BLE HID without custom hardware.
+
+### Twiddler 4
+
+Commercial chording keyboard hardware:
+- **MCU**: nRF52840 via EByte E73-2G4M08S1C module
+- **Input**: 16 mechanical buttons (4 thumb + 12 finger)
+- **I2C**: Azoteq IQS5xx touchpad (P0.30/P0.31)
+- **LEDs**: WS2812B/SK6812 addressable RGB (via I2S)
+- **Debug**: SWD header (J2), I2C header (J3)
+
+Documentation:
+- [Product overview](twiddler4/01-PRODUCT_OVERVIEW.md)
+- [Hardware reverse engineering](twiddler4/02-HARDWARE_RE.md)
 - [GPIO pin mapping](twiddler4/03-GPIO_DISCOVERY.md)
+- [I2C bus analysis](twiddler4/04-I2C_ANALYSIS.md)
 - [Config file format](twiddler4/06-CONFIG_FORMAT.md)
 - [Firmware development](twiddler4/07-FIRMWARE_DEVELOPMENT.md)
+- [APPROTECT bypass](twiddler4/08-APPROTECT_BYPASS.md)
 
-**Northern Chorder:**
-- [Hardware wiring plan](nchorder/HARDWARE.md)
+## Quick Start
+
+```bash
+# Build for default board (XIAO with Trill sensors)
+make
+
+# Build for nRF52840-DK
+make BOARD=dk
+
+# Build for Twiddler 4
+make BOARD=twiddler4
+
+# Flash (requires nrfjprog)
+make flash
+```
+
+## Features
+
+- BLE HID keyboard with LESC pairing
+- USB HID (Twiddler 4 only, disabled on XIAO/DK)
+- Twiddler-compatible chord configuration
+- Persistent bond storage
+- RTT debug logging

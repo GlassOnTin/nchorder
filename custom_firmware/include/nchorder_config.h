@@ -17,17 +17,17 @@
 // BOARD SELECTION
 // ============================================================================
 // Define the target board. This can be set in the Makefile via CFLAGS.
-// Default to Twiddler4 if not specified.
+// Default to XIAO if not specified.
 
 #if defined(BOARD_XIAO_NRF52840)
     #include "boards/board_xiao_nrf52840.h"
-#elif defined(BOARD_PCA10056)
+#elif defined(BOARD_IS_DK)
     #include "boards/board_pca10056.h"
 #elif defined(BOARD_TWIDDLER4)
     #include "boards/board_twiddler4.h"
 #else
-    // Default to Twiddler4 for production builds
-    #include "boards/board_twiddler4.h"
+    // Default to XIAO for production builds
+    #include "boards/board_xiao_nrf52840.h"
 #endif
 
 // ============================================================================

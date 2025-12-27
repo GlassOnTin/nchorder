@@ -2365,8 +2365,10 @@ int main(void)
     NRF_LOG_INFO("nChorder XIAO firmware started.");
 #elif defined(BOARD_IS_DK)
     NRF_LOG_INFO("nChorder DK firmware started.");
-#else
+#elif defined(BOARD_TWIDDLER4)
     NRF_LOG_INFO("nChorder Twiddler4 firmware started.");
+#else
+    NRF_LOG_INFO("nChorder firmware started.");
 #endif
     timers_start();
 
@@ -2390,6 +2392,10 @@ int main(void)
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 14));     // LED2 OFF
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 15));     // LED3 OFF
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 16));     // LED4 OFF
+#elif defined(BOARD_TWIDDLER4)
+    // Twiddler 4: WS2812B/SK6812 addressable LEDs on thumb board
+    // These use I2S protocol via FFC cable - not yet implemented
+    // TODO: Implement WS2812 driver using I2S or bitbang on PIN_LED_DATA
 #endif
 
     // Enter main loop.

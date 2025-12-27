@@ -1,9 +1,10 @@
 # Northern Chorder Custom Firmware Makefile
 # Based on Nordic SDK 17.1.0 ble_app_hids_keyboard example
 #
-# Build: make              (default: twiddler4)
+# Build: make              (default: xiao)
 #        make BOARD=xiao   (XIAO nRF52840 with Trill sensors)
 #        make BOARD=dk     (nRF52840-DK for testing)
+#        make BOARD=twiddler4 (Twiddler 4 hardware)
 # Clean: make clean
 # Flash: make flash (requires nrfjprog)
 
@@ -306,13 +307,13 @@ CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
 # Board-specific defines
 # Note: BOARD_PCA10056 is always needed for SDK compatibility (same nRF52840 chip)
 # Our code uses BOARD_XIAO_NRF52840/BOARD_TWIDDLER4 for GPIO pin selection
-ifeq ($(BOARD),xiao)
-  CFLAGS += -DBOARD_XIAO_NRF52840 -DBOARD_PCA10056
-else ifeq ($(BOARD),dk)
+ifeq ($(BOARD),dk)
   CFLAGS += -DBOARD_PCA10056 -DBOARD_IS_DK
-else
-  # Default: Twiddler 4
+else ifeq ($(BOARD),twiddler4)
   CFLAGS += -DBOARD_TWIDDLER4 -DBOARD_PCA10056
+else
+  # Default: XIAO nRF52840 with Trill sensors
+  CFLAGS += -DBOARD_XIAO_NRF52840 -DBOARD_PCA10056
 endif
 
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
@@ -340,12 +341,13 @@ ASMFLAGS += -DAPP_TIMER_V2
 ASMFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
 
 # Board-specific defines (must match CFLAGS)
-ifeq ($(BOARD),xiao)
-  ASMFLAGS += -DBOARD_XIAO_NRF52840 -DBOARD_PCA10056
-else ifeq ($(BOARD),dk)
-  ASMFLAGS += -DBOARD_PCA10056
-else
+ifeq ($(BOARD),dk)
+  ASMFLAGS += -DBOARD_PCA10056 -DBOARD_IS_DK
+else ifeq ($(BOARD),twiddler4)
   ASMFLAGS += -DBOARD_TWIDDLER4 -DBOARD_PCA10056
+else
+  # Default: XIAO
+  ASMFLAGS += -DBOARD_XIAO_NRF52840 -DBOARD_PCA10056
 endif
 
 ASMFLAGS += -DCONFIG_GPIO_AS_PINRESET
@@ -379,14 +381,14 @@ help:
 	@echo "Northern Chorder Firmware Build System"
 	@echo ""
 	@echo "Board targets (BOARD=):"
-	@echo "  twiddler4    - Twiddler 4 hardware (default)"
-	@echo "  xiao         - XIAO nRF52840 with Trill sensors"
+	@echo "  xiao         - XIAO nRF52840 with Trill sensors (default)"
 	@echo "  dk           - nRF52840-DK for testing"
+	@echo "  twiddler4    - Twiddler 4 hardware"
 	@echo ""
 	@echo "Build commands:"
-	@echo "  make                  - Build for default board (twiddler4)"
-	@echo "  make BOARD=xiao       - Build for XIAO nRF52840"
+	@echo "  make                  - Build for default board (xiao)"
 	@echo "  make BOARD=dk         - Build for nRF52840-DK"
+	@echo "  make BOARD=twiddler4  - Build for Twiddler 4"
 	@echo "  make clean            - Remove build artifacts"
 	@echo "  make flash            - Flash firmware (preserves bootloader)"
 	@echo "  make flash_softdevice - Flash SoftDevice S140"
