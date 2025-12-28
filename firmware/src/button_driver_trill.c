@@ -21,6 +21,10 @@
 #include "app_scheduler.h"
 #include "nrf_log.h"
 #include "nrf_gpio.h"
+#include "SEGGER_RTT.h"
+
+// Enable RTT debug output for Trill sensors (for trill_visualizer.py)
+#define TRILL_DEBUG_RTT 1
 
 // simple_delay_ms is defined in nchorder_trill.c (included before this file)
 
@@ -284,6 +288,33 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
         }
     }
 
+#if TRILL_DEBUG_RTT
+    // Output sensor data for visualization: TRILL:ch,type,init,touches,data...
+    static uint32_t rtt_counter = 0;
+    if ((rtt_counter++ % 10) == 0) {  // Every 10th poll (~150ms)
+        for (int ch = 0; ch < MUX_NUM_CHANNELS; ch++) {
+            trill_sensor_t *s = &m_sensors[ch];
+            if (s->is_2d) {
+                // 2D sensor (Square): TRILL:ch,2D,init,n,x0,y0,s0,x1,y1,s1,...
+                SEGGER_RTT_printf(0, "TRILL:%d,2D,%d,%d", ch, s->initialized, s->num_touches);
+                for (int t = 0; t < s->num_touches && t < 5; t++) {
+                    SEGGER_RTT_printf(0, ",%d,%d,%d",
+                        s->touches_2d[t].x, s->touches_2d[t].y, s->touches_2d[t].size);
+                }
+                SEGGER_RTT_printf(0, "\n");
+            } else {
+                // 1D sensor (Bar): TRILL:ch,1D,init,n,p0,s0,p1,s1,...
+                SEGGER_RTT_printf(0, "TRILL:%d,1D,%d,%d", ch, s->initialized, s->num_touches);
+                for (int t = 0; t < s->num_touches && t < 5; t++) {
+                    SEGGER_RTT_printf(0, ",%d,%d",
+                        s->touches[t].position, s->touches[t].size);
+                }
+                SEGGER_RTT_printf(0, "\n");
+            }
+        }
+    }
+#endif
+
     (void)any_touch;  // Suppress unused warning
 
     // Build button mask from sensor readings
@@ -361,8 +392,8 @@ uint32_t buttons_init(void)
             continue;
         }
 
-        // All Trill sensors use default address 0x20, mux channel separates them
-        uint8_t addr = I2C_ADDR_TRILL;
+        // Trill Square (ch0) uses default address 0x28, Bars (ch1-3) use 0x20
+        uint8_t addr = (ch == MUX_CH_THUMB) ? TRILL_ADDR_SQUARE : I2C_ADDR_TRILL;
 
         // Initialize sensor inline to avoid function call overhead
         trill_sensor_t *sensor = &m_sensors[ch];
