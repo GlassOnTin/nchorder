@@ -405,17 +405,15 @@ static bool load_config_slot(int slot)
 
 void nchorder_msc_on_disconnect(void)
 {
-    // Only reload if USB was actually used (avoid spurious reload on boot)
+    // Only request reload if USB was actually active (RESUMED event has fired)
+    // This prevents FatFS operations during initial USB enumeration
     if (!m_usb_was_active)
     {
-        NRF_LOG_DEBUG("MSC: Ignoring disconnect (USB not yet active)");
         return;
     }
-
-    // Set flag for main loop to process (don't do FatFS ops in interrupt context)
     m_config_reload_pending = true;
-    NRF_LOG_INFO("MSC: Config reload requested");
 }
+
 
 void nchorder_msc_set_active(void)
 {

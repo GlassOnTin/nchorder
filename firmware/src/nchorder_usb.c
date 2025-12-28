@@ -113,7 +113,7 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             m_usb_connected = true;
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
             m_usb_activation_pending = true;
-            m_usb_activation_delay = 100;  // Wait ~100 main loop iterations before activation
+            m_usb_activation_delay = 100;
 #endif
             break;
 
