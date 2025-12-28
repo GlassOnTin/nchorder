@@ -93,10 +93,10 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Suspended");
             m_usb_suspended = true;
             app_usbd_suspend_req();
-#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
-            // Request config reload when USB is suspended (host ejected the drive)
-            nchorder_msc_on_disconnect();
-#endif
+            // Note: Do NOT call nchorder_msc_on_disconnect() here.
+            // SUSPEND means host paused communication, but USB MSC still owns
+            // the block device. Trying to access FatFS here causes a crash.
+            // Config reload only happens on STOPPED or POWER_REMOVED.
             break;
 
         case APP_USBD_EVT_DRV_RESUME:
