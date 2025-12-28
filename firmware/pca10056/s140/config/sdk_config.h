@@ -252,12 +252,12 @@
 // <i> If set to true, you need to call nrf_ble_lesc_request_handler() in the main loop to respond to LESC-related BLE events. If LESC support is not required, set this to false to save code space.
 
 #ifndef PM_LESC_ENABLED
-#define PM_LESC_ENABLED 1
+#define PM_LESC_ENABLED 0
 #endif
 
 // <e> NRF_BLE_LESC_ENABLED - Enable LESC module
 #ifndef NRF_BLE_LESC_ENABLED
-#define NRF_BLE_LESC_ENABLED 1
+#define NRF_BLE_LESC_ENABLED 0
 #endif
 
 // <e> PM_RA_PROTECTION_ENABLED - Enable/disable protection against repeated pairing attempts in Peer Manager.

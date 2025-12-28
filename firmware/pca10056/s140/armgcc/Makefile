@@ -60,9 +60,18 @@ SRC_FILES += \
   $(PROJ_DIR)/src/nchorder_chords.c \
   $(PROJ_DIR)/src/nchorder_buttons.c \
   $(PROJ_DIR)/src/nchorder_usb.c \
+  $(PROJ_DIR)/src/nchorder_msc.c \
   $(PROJ_DIR)/src/nchorder_storage.c \
   $(PROJ_DIR)/src/nchorder_led.c \
+  $(PROJ_DIR)/src/nchorder_i2c.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_i2s.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_twi.c \
+  $(SDK_ROOT)/components/libraries/usbd/class/msc/app_usbd_msc.c \
+  $(SDK_ROOT)/components/libraries/block_dev/empty/nrf_block_dev_empty.c \
+  $(SDK_ROOT)/components/libraries/block_dev/ram/nrf_block_dev_ram.c \
+  $(SDK_ROOT)/external/fatfs/src/ff.c \
+  $(SDK_ROOT)/external/fatfs/port/diskio_blkdev.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \
@@ -114,6 +123,10 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/generic \
   $(SDK_ROOT)/components/libraries/usbd/class/msc \
   $(SDK_ROOT)/components/libraries/usbd/class/hid \
+  $(SDK_ROOT)/components/libraries/block_dev \
+  $(SDK_ROOT)/components/libraries/block_dev/ram \
+  $(SDK_ROOT)/external/fatfs/src \
+  $(SDK_ROOT)/external/fatfs/port \
   $(SDK_ROOT)/modules/nrfx/hal \
   $(SDK_ROOT)/components/nfc/ndef/conn_hand_parser/le_oob_rec_parser \
   $(SDK_ROOT)/components/libraries/log \
@@ -250,6 +263,7 @@ CFLAGS += $(OPT)
 CFLAGS += -DAPP_TIMER_V2
 CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
 CFLAGS += -DBOARD_PCA10056
+CFLAGS += -DBOARD_XIAO_NRF52840
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DNRF52840_XXAA

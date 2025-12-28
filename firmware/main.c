@@ -83,7 +83,9 @@
 #include "nrf_ble_qwr.h"
 #include "nrf_pwr_mgmt.h"
 #include "peer_manager_handler.h"
+#if NRF_BLE_LESC_ENABLED
 #include "nrf_ble_lesc.h"
+#endif
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -2415,9 +2417,12 @@ int main(void)
     // Enter main loop.
     for (;;)
     {
+#if NRF_BLE_LESC_ENABLED
         nrf_ble_lesc_request_handler();  // Process LESC requests
+#endif
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
         nchorder_usb_process();  // Process USB events
+        nchorder_usb_check_disconnect();  // Check for deferred activation
         nchorder_msc_process();  // Process deferred MSC operations (config reload)
 #endif
         idle_state_handle();

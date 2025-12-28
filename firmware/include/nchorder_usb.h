@@ -59,4 +59,12 @@ uint32_t nchorder_usb_key_release(void);
  */
 void nchorder_usb_process(void);
 
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+/**
+ * Check for USB disconnect and process deferred activation
+ * Call this periodically from main loop
+ */
+void nchorder_usb_check_disconnect(void);
+#endif
+
 #endif // NCHORDER_USB_H

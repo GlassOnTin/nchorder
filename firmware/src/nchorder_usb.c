@@ -23,6 +23,12 @@
 static bool m_usb_connected = false;
 static bool m_usb_suspended = false;
 
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+// Deferred USB activation - set in interrupt, processed in main loop
+static volatile bool m_usb_activation_pending = false;
+static volatile uint8_t m_usb_activation_delay = 0;  // Delay counter to let USB settle
+#endif
+
 // Forward declaration of event handler
 static void hid_kbd_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_hid_user_event_t event);
@@ -105,6 +111,10 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
         case APP_USBD_EVT_STARTED:
             NRF_LOG_INFO("USB: Started");
             m_usb_connected = true;
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+            m_usb_activation_pending = true;
+            m_usb_activation_delay = 100;  // Wait ~100 main loop iterations before activation
+#endif
             break;
 
         case APP_USBD_EVT_STOPPED:
@@ -346,3 +356,20 @@ void nchorder_usb_process(void)
         // Process all pending events
     }
 }
+
+#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
+void nchorder_usb_check_disconnect(void)
+{
+    if (m_usb_activation_pending && m_usb_connected)
+    {
+        // Wait for USB to settle before marking active
+        if (m_usb_activation_delay > 0)
+        {
+            m_usb_activation_delay--;
+            return;
+        }
+        m_usb_activation_pending = false;
+        nchorder_msc_set_active();
+    }
+}
+#endif
