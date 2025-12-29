@@ -9,6 +9,7 @@
 #include "nchorder_i2c.h"
 #include "nchorder_config.h"
 #include "nrf_log.h"
+#include "SEGGER_RTT.h"
 
 // Simple busy-wait delay (avoid nrf_delay_ms which may hang without DWT init)
 static void simple_delay_ms(uint32_t ms)
@@ -50,7 +51,8 @@ static ret_code_t trill_send_command(uint8_t addr, uint8_t cmd, const uint8_t *p
  */
 static ret_code_t trill_prepare_read(uint8_t addr)
 {
-    uint8_t offset = TRILL_OFFSET_DATA;
+    // Read from offset 0 to get all data including any header bytes
+    uint8_t offset = 0;
     return nchorder_i2c_write(addr, &offset, 1);
 }
 
@@ -175,28 +177,54 @@ ret_code_t trill_read(trill_sensor_t *sensor)
         return err;
     }
 
-    // Read centroid data
-    // 1D sensors: 20 bytes (5 touches * 2 bytes position + 5 * 2 bytes size)
-    // 2D sensors: 32 bytes (5 touches * (2 pos_x + 2 pos_y + 2 size))
-    read_len = sensor->is_2d ? 32 : 20;
+    // Read centroid data (including 4-byte header from offset 0)
+    // 1D sensors: 4 header + 20 data bytes
+    // 2D sensors: 4 header + 30 data bytes
+    read_len = sensor->is_2d ? 34 : 24;
 
     err = nchorder_i2c_read(sensor->i2c_addr, buf, read_len);
     if (err != NRF_SUCCESS) {
         return err;
     }
 
+    // Debug: dump raw bytes for 2D sensor (header + data)
+    if (sensor->is_2d) {
+        static uint32_t dbg_cnt = 0;
+        if ((dbg_cnt++ % 50) == 0) {
+            // Header: bytes 0-3
+            SEGGER_RTT_printf(0, "RAW2D:[%02X%02X%02X%02X]",
+                buf[0], buf[1], buf[2], buf[3]);
+            // Y positions: bytes 4-13
+            SEGGER_RTT_printf(0, "Y:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
+                buf[4], buf[5], buf[6], buf[7], buf[8],
+                buf[9], buf[10], buf[11], buf[12], buf[13]);
+            // X positions: bytes 14-23
+            SEGGER_RTT_printf(0, "X:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
+                buf[14], buf[15], buf[16], buf[17], buf[18],
+                buf[19], buf[20], buf[21], buf[22], buf[23]);
+            // Sizes: bytes 24-33
+            SEGGER_RTT_printf(0, "S:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
+                buf[24], buf[25], buf[26], buf[27], buf[28],
+                buf[29], buf[30], buf[31], buf[32], buf[33]);
+        }
+    }
+
     // Parse centroid data
     sensor->num_touches = 0;
 
     if (sensor->is_2d) {
-        // 2D format: [x0_h, x0_l, y0_h, y0_l, ...] then [size0_h, size0_l, ...]
-        // Positions at offset 0, sizes at offset 20
+        // Trill Square 2D centroid format (after 4-byte header):
+        // Bytes 4-13:  Horizontal (Y) positions for touches 0-4 (5 * 2 bytes)
+        // Bytes 14-23: Vertical (X) positions for touches 0-4 (5 * 2 bytes)
+        // Bytes 24-33: Touch sizes for touches 0-4 (5 * 2 bytes)
+        const int DATA_OFFSET = 4;  // Skip header
         for (int i = 0; i < TRILL_MAX_TOUCHES_2D; i++) {
-            uint16_t x = read_be16(&buf[i * 4]);
-            uint16_t y = read_be16(&buf[i * 4 + 2]);
-            uint16_t size = read_be16(&buf[20 + i * 2]);
+            uint16_t y = read_be16(&buf[DATA_OFFSET + i * 2]);         // Horizontal = Y
+            uint16_t x = read_be16(&buf[DATA_OFFSET + 10 + i * 2]);    // Vertical = X
+            uint16_t size = read_be16(&buf[DATA_OFFSET + 20 + i * 2]);
 
-            if (size > 0) {
+            // Size of 0 or 0xFFFF means no touch
+            if (size > 0 && size != 0xFFFF) {
                 sensor->touches_2d[sensor->num_touches].x = x;
                 sensor->touches_2d[sensor->num_touches].y = y;
                 sensor->touches_2d[sensor->num_touches].size = size;
@@ -204,13 +232,16 @@ ret_code_t trill_read(trill_sensor_t *sensor)
             }
         }
     } else {
-        // 1D format: [pos0_h, pos0_l, pos1_h, pos1_l, ...] then [size0_h, size0_l, ...]
-        // Positions at offset 0, sizes at offset 10
+        // 1D format (after 4-byte header):
+        // Bytes 4-13:  Positions for touches 0-4 (5 * 2 bytes)
+        // Bytes 14-23: Sizes for touches 0-4 (5 * 2 bytes)
+        const int DATA_OFFSET = 4;  // Skip header
         for (int i = 0; i < TRILL_MAX_TOUCHES_1D; i++) {
-            uint16_t pos = read_be16(&buf[i * 2]);
-            uint16_t size = read_be16(&buf[10 + i * 2]);
+            uint16_t pos = read_be16(&buf[DATA_OFFSET + i * 2]);
+            uint16_t size = read_be16(&buf[DATA_OFFSET + 10 + i * 2]);
 
-            if (size > 0) {
+            // Size of 0 or 0xFFFF means no touch
+            if (size > 0 && size != 0xFFFF) {
                 sensor->touches[sensor->num_touches].position = pos;
                 sensor->touches[sensor->num_touches].size = size;
                 sensor->num_touches++;

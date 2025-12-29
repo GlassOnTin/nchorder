@@ -1,0 +1,28 @@
+# Truly minimal LED test - no SDK at all
+
+OUTPUT_DIRECTORY := _build_led_test
+
+.PHONY: default clean flash
+
+default: $(OUTPUT_DIRECTORY)/led_test.hex
+
+$(OUTPUT_DIRECTORY):
+	mkdir -p $@
+
+$(OUTPUT_DIRECTORY)/led_test.o: led_test.c | $(OUTPUT_DIRECTORY)
+	arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -o $@ $<
+
+$(OUTPUT_DIRECTORY)/led_test.elf: $(OUTPUT_DIRECTORY)/led_test.o led_test.ld
+	arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
+		-T led_test.ld -nostartfiles -Wl,--gc-sections -o $@ $(OUTPUT_DIRECTORY)/led_test.o
+	arm-none-eabi-size $@
+
+$(OUTPUT_DIRECTORY)/led_test.hex: $(OUTPUT_DIRECTORY)/led_test.elf
+	arm-none-eabi-objcopy -O ihex $< $@
+
+clean:
+	rm -rf $(OUTPUT_DIRECTORY)
+
+flash: $(OUTPUT_DIRECTORY)/led_test.hex
+	nrfjprog --program $< --chiperase --verify -f nrf52
+	nrfjprog --reset -f nrf52

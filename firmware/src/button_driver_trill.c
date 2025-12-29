@@ -439,6 +439,13 @@ uint32_t buttons_init(void)
         sensor->is_2d = (sensor->device_type == TRILL_TYPE_SQUARE ||
                          sensor->device_type == TRILL_TYPE_HEX);
 
+        // Force channel 0 (Square) to be 2D regardless of identification
+        // The Square may return wrong device_type in identification response
+        if (ch == MUX_CH_THUMB) {
+            sensor->device_type = TRILL_TYPE_SQUARE;
+            sensor->is_2d = true;
+        }
+
         NRF_LOG_INFO("Ch%d: Trill %s (fw=%d)", ch,
                      trill_type_name(sensor->device_type), sensor->firmware_version);
 
