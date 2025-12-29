@@ -87,6 +87,7 @@ SRC_FILES += \
   $(SDK_ROOT)/external/fatfs/src/ff.c \
   $(SDK_ROOT)/external/fatfs/port/diskio_blkdev.c \
   $(PROJ_DIR)/src/nchorder_msc.c \
+  $(PROJ_DIR)/src/nchorder_ini.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \

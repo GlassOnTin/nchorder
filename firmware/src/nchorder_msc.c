@@ -8,6 +8,7 @@
 #include "nchorder_msc.h"
 #include "nchorder_config.h"
 #include "nchorder_chords.h"
+#include "nchorder_ini.h"
 
 #include "app_usbd.h"
 #include "app_usbd_msc.h"
@@ -23,12 +24,13 @@
 // ============================================================================
 
 /**
- * @brief RAM block device size (192KB = 384 sectors @ 512 bytes)
+ * @brief RAM block device size (128KB = 256 sectors @ 512 bytes)
  *
- * Minimum ~190KB required for FAT16 compatibility with Windows/Android.
- * This size should work on Android OTG, Windows, Mac, and Linux.
+ * Note: 190KB+ recommended for FAT16 on Windows/Android. Currently using
+ * 128KB to fit in RAM with SoftDevice. Works on Linux, may need testing
+ * on other platforms.
  */
-#define RAM_BLOCK_DEVICE_SIZE   (192 * 1024)
+#define RAM_BLOCK_DEVICE_SIZE   (128 * 1024)
 
 /**
  * @brief MSC work buffer size
@@ -168,9 +170,10 @@ static bool fatfs_init(void)
                 "Northern Chorder Config Disk\r\n"
                 "============================\r\n"
                 "\r\n"
-                "Place config files here:\r\n"
-                "  0.CFG - 9.CFG  (chord layouts)\r\n"
-                "  ACTIVE.TXT     (active config: 0-9)\r\n"
+                "Files:\r\n"
+                "  CONFIG.INI     Settings (edit with text editor)\r\n"
+                "  0.CFG - 9.CFG  Chord layouts (binary)\r\n"
+                "  ACTIVE.TXT     Active layout slot (0-9)\r\n"
                 "\r\n"
                 "Disconnect USB to apply changes.\r\n";
 
@@ -178,6 +181,18 @@ static bool fatfs_init(void)
             f_write(&file, readme, strlen(readme), &bytes_written);
             f_close(&file);
             NRF_LOG_INFO("FatFS: Created README.TXT");
+        }
+
+        // Create default CONFIG.INI
+        ff_result = f_open(&file, "CONFIG.INI", FA_CREATE_ALWAYS | FA_WRITE);
+        if (ff_result == FR_OK)
+        {
+            char ini_buf[1024];
+            int ini_len = nchorder_ini_generate_default(ini_buf, sizeof(ini_buf));
+            UINT bytes_written;
+            f_write(&file, ini_buf, ini_len, &bytes_written);
+            f_close(&file);
+            NRF_LOG_INFO("FatFS: Created CONFIG.INI (%d bytes)", ini_len);
         }
     }
     else if (ff_result != FR_OK)
@@ -233,6 +248,9 @@ ret_code_t nchorder_msc_init(void)
     ret_code_t ret;
 
     NRF_LOG_INFO("MSC: Initializing (192KB RAM disk)");
+
+    // Initialize runtime config with defaults
+    nchorder_config_reset();
 
     // Format disk with FAT16 before USB exposes it
     if (!fatfs_init())
@@ -403,6 +421,53 @@ static bool load_config_slot(int slot)
     return true;
 }
 
+/**
+ * @brief Load and parse CONFIG.INI from disk
+ *
+ * @return Number of settings parsed, or -1 on error
+ */
+static int load_ini_config(void)
+{
+    FIL file;
+    FRESULT ff_result;
+    UINT bytes_read;
+
+    ff_result = f_open(&file, "CONFIG.INI", FA_READ);
+    if (ff_result != FR_OK)
+    {
+        NRF_LOG_DEBUG("MSC: CONFIG.INI not found, using defaults");
+        return 0;
+    }
+
+    // Get file size
+    FSIZE_t file_size = f_size(&file);
+    if (file_size > MAX_CONFIG_SIZE)
+    {
+        NRF_LOG_WARNING("MSC: CONFIG.INI too large (%d bytes)", (int)file_size);
+        f_close(&file);
+        return -1;
+    }
+
+    // Read entire file into config buffer (reuse the buffer)
+    ff_result = f_read(&file, m_config_buffer, (UINT)file_size, &bytes_read);
+    f_close(&file);
+
+    if (ff_result != FR_OK || bytes_read != file_size)
+    {
+        NRF_LOG_WARNING("MSC: Failed to read CONFIG.INI");
+        return -1;
+    }
+
+    // Null-terminate for string parsing
+    m_config_buffer[bytes_read] = '\0';
+
+    // Parse INI file
+    int parsed = nchorder_ini_parse((const char *)m_config_buffer, bytes_read);
+    NRF_LOG_INFO("MSC: Parsed %d settings from CONFIG.INI", parsed);
+
+    return parsed;
+}
+
 void nchorder_msc_on_disconnect(void)
 {
     // Only request reload if USB was actually active (RESUMED event has fired)
@@ -458,6 +523,10 @@ void nchorder_msc_process(void)
             load_config_slot(0);
         }
     }
+
+    // Load CONFIG.INI settings (reset to defaults first)
+    nchorder_config_reset();
+    load_ini_config();
 
     // Unmount FatFS (USB might reconnect)
     f_mount(NULL, "", 0);

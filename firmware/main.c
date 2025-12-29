@@ -2359,6 +2359,9 @@ int main(void)
 {
     bool erase_bonds;
 
+    // Brief startup delay for hardware stabilization
+    for (volatile int i = 0; i < 100000; i++);
+
     // Initialize logging first
     log_init();
     timers_init();

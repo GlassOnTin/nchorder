@@ -164,7 +164,7 @@ ret_code_t trill_init(trill_sensor_t *sensor, uint8_t i2c_addr)
 ret_code_t trill_read(trill_sensor_t *sensor)
 {
     ret_code_t err;
-    uint8_t buf[32];  // Enough for centroid data
+    uint8_t buf[36];  // Enough for centroid data (2D needs 34 bytes)
     size_t read_len;
 
     if (sensor == NULL || !sensor->initialized) {

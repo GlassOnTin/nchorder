@@ -130,6 +130,9 @@ static uint16_t build_button_mask(void)
 {
     uint16_t mask = 0;
 
+    // Use hardcoded threshold for now (CONFIG.INI support to be added later)
+    uint16_t min_touch_size = TRILL_MIN_TOUCH_SIZE;
+
     // === Thumb buttons from Trill Square (channel 0) ===
     trill_sensor_t *square = &m_sensors[MUX_CH_THUMB];
     if (square->initialized && square->num_touches > 0) {
@@ -139,7 +142,7 @@ static uint16_t build_button_mask(void)
             uint16_t y = square->touches_2d[t].y;
             uint16_t size = square->touches_2d[t].size;
 
-            if (size >= TRILL_MIN_TOUCH_SIZE) {
+            if (size >= min_touch_size) {
                 uint8_t quadrant = square_position_to_quadrant(x, y);
 
                 // Map quadrant to thumb button bit
@@ -165,7 +168,7 @@ static uint16_t build_button_mask(void)
             uint16_t pos = bar_l->touches[t].position;
             uint16_t size = bar_l->touches[t].size;
 
-            if (size >= TRILL_MIN_TOUCH_SIZE) {
+            if (size >= min_touch_size) {
                 uint8_t zone = bar_position_to_zone(pos);
 
                 switch (zone) {
@@ -186,7 +189,7 @@ static uint16_t build_button_mask(void)
             uint16_t pos = bar_m->touches[t].position;
             uint16_t size = bar_m->touches[t].size;
 
-            if (size >= TRILL_MIN_TOUCH_SIZE) {
+            if (size >= min_touch_size) {
                 uint8_t zone = bar_position_to_zone(pos);
 
                 switch (zone) {
@@ -207,7 +210,7 @@ static uint16_t build_button_mask(void)
             uint16_t pos = bar_r->touches[t].position;
             uint16_t size = bar_r->touches[t].size;
 
-            if (size >= TRILL_MIN_TOUCH_SIZE) {
+            if (size >= min_touch_size) {
                 uint8_t zone = bar_position_to_zone(pos);
 
                 switch (zone) {

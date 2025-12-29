@@ -8,7 +8,7 @@ MEMORY
   /* DFU-safe layout: ends at 0xF0000, leaving 64KB for bootloader at 0xF0000-0x100000 */
   /* Original: LENGTH = 0xd9000 (went to 0x100000, would overwrite bootloader) */
   FLASH (rx) : ORIGIN = 0x27000, LENGTH = 0xc9000
-  RAM (rwx) :  ORIGIN = 0x20002260, LENGTH = 0x3dda0
+  RAM (rwx) :  ORIGIN = 0x20003000, LENGTH = 0x3d000
 }
 
 SECTIONS
