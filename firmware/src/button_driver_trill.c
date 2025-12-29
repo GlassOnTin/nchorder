@@ -39,10 +39,10 @@
 #define TRILL_DEBOUNCE_MS           30
 
 // Minimum touch size to register as button press (increased to reduce noise/voltage transients)
-#define TRILL_MIN_TOUCH_SIZE        300
+#define TRILL_MIN_TOUCH_SIZE        500
 
 // Release threshold (lower than press threshold for hysteresis)
-#define TRILL_RELEASE_SIZE          150
+#define TRILL_RELEASE_SIZE          250
 
 // ============================================================================
 // STATE

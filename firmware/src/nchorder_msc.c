@@ -24,13 +24,13 @@
 // ============================================================================
 
 /**
- * @brief RAM block device size (128KB = 256 sectors @ 512 bytes)
+ * @brief RAM block device size (192KB = 384 sectors @ 512 bytes)
  *
- * Note: 190KB+ recommended for FAT16 on Windows/Android. Currently using
- * 128KB to fit in RAM with SoftDevice. Works on Linux, may need testing
- * on other platforms.
+ * 190KB+ required for FAT16 on Windows/Android. Memory optimizations
+ * (reduced config buffer, RTT buffer, heap) allow 192KB to fit with
+ * SoftDevice S140 on nRF52840.
  */
-#define RAM_BLOCK_DEVICE_SIZE   (128 * 1024)
+#define RAM_BLOCK_DEVICE_SIZE   (192 * 1024)
 
 /**
  * @brief MSC work buffer size
@@ -294,9 +294,9 @@ bool nchorder_msc_sync(void)
 // ============================================================================
 
 /**
- * @brief Maximum config file size (16KB should be plenty)
+ * @brief Maximum config file size (8KB - typical configs are 2-4KB)
  */
-#define MAX_CONFIG_SIZE     (16 * 1024)
+#define MAX_CONFIG_SIZE     (8 * 1024)
 
 /**
  * @brief Config file buffer (static to avoid stack overflow)

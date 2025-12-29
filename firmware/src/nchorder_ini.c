@@ -15,7 +15,7 @@ static nchorder_config_t g_config;
 // Default values
 #define DEFAULT_DEBOUNCE_MS      30
 #define DEFAULT_POLL_RATE_MS     15
-#define DEFAULT_TRILL_THRESHOLD  300
+#define DEFAULT_TRILL_THRESHOLD  500
 #define DEFAULT_TRILL_PRESCALER  1
 #define DEFAULT_CHORD_TIMEOUT_MS 0
 #define DEFAULT_CHORD_REPEAT     false
