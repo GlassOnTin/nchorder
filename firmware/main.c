@@ -98,9 +98,7 @@
 #include "nchorder_buttons.h"
 #include "nchorder_chords.h"
 #include "nchorder_hid.h"
-#include "nchorder_storage.h"
 #include "nchorder_usb.h"
-#include "nchorder_msc.h"
 #include "nchorder_led.h"
 
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
@@ -2257,29 +2255,11 @@ static void nchorder_button_callback(uint16_t button_state)
 static void nchorder_init(void)
 {
     ret_code_t err_code;
-    const uint8_t *config_data = NULL;
-    size_t config_size = 0;
 
     NRF_LOG_INFO("Twiddler: Initializing chord input system");
 
     // Initialize chord detection state machine (loads default mappings)
     chord_init(&m_chord_ctx);
-
-    // Try to load custom config from flash storage
-    err_code = nchorder_storage_load(&config_data, &config_size);
-    if (err_code == NRF_SUCCESS && config_data != NULL)
-    {
-        NRF_LOG_INFO("Twiddler: Loading custom config (%d bytes)", config_size);
-        chord_load_config(config_data, config_size);
-    }
-    else if (err_code == NRF_ERROR_NOT_FOUND)
-    {
-        NRF_LOG_INFO("Twiddler: No custom config, using defaults");
-    }
-    else
-    {
-        NRF_LOG_WARNING("Twiddler: Config load failed: %d, using defaults", err_code);
-    }
 
     // Initialize button input (Trill sensors on XIAO, GPIO on others)
     err_code = buttons_init();
@@ -2293,7 +2273,7 @@ static void nchorder_init(void)
         buttons_set_callback(nchorder_button_callback);
     }
 
-    // Initialize USB HID + MSC (for wired operation and config upload)
+    // Initialize USB HID (for wired operation)
     // XIAO uses manual USB start (no power detection) to avoid SoftDevice conflict
     // DK is BLE-only for testing
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
@@ -2305,15 +2285,7 @@ static void nchorder_init(void)
     }
     else
     {
-        // Add MSC class for config file upload
-        err_code = nchorder_msc_init();
-        if (err_code != NRF_SUCCESS)
-        {
-            NRF_LOG_WARNING("USB MSC init failed: %d (mass storage disabled)", err_code);
-            // Continue - HID still works
-        }
-
-        // Start USB after all classes have been added
+        // Start USB
         err_code = nchorder_usb_start();
         if (err_code != NRF_SUCCESS)
         {
@@ -2426,7 +2398,6 @@ int main(void)
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
         nchorder_usb_process();  // Process USB events
         nchorder_usb_check_disconnect();  // Check for deferred activation
-        nchorder_msc_process();  // Process deferred MSC operations (config reload)
 #endif
         idle_state_handle();
     }

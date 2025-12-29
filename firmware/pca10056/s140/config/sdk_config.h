@@ -6702,7 +6702,7 @@
  
 
 #ifndef APP_USBD_MSC_ENABLED
-#define APP_USBD_MSC_ENABLED 1
+#define APP_USBD_MSC_ENABLED 0
 #endif
 
 // <q> NRF_BLOCK_DEV_RAM_ENABLED  - nrf_block_dev_ram - RAM block device

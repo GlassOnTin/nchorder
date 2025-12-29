@@ -40,6 +40,8 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/crc16/crc16.c \
   $(SDK_ROOT)/components/libraries/timer/drv_rtc.c \
   $(SDK_ROOT)/components/libraries/fds/fds.c \
+  $(SDK_ROOT)/components/libraries/fstorage/nrf_fstorage.c \
+  $(SDK_ROOT)/components/libraries/fstorage/nrf_fstorage_sd.c \
   $(SDK_ROOT)/components/libraries/hardfault/hardfault_implementation.c \
   $(SDK_ROOT)/components/libraries/util/nrf_assert.c \
   $(SDK_ROOT)/components/libraries/atomic_fifo/nrf_atfifo.c \
@@ -48,8 +50,6 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/balloc/nrf_balloc.c \
   $(SDK_ROOT)/external/fprintf/nrf_fprintf.c \
   $(SDK_ROOT)/external/fprintf/nrf_fprintf_format.c \
-  $(SDK_ROOT)/components/libraries/fstorage/nrf_fstorage.c \
-  $(SDK_ROOT)/components/libraries/fstorage/nrf_fstorage_sd.c \
   $(SDK_ROOT)/components/libraries/memobj/nrf_memobj.c \
   $(SDK_ROOT)/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c \
   $(SDK_ROOT)/components/libraries/ringbuf/nrf_ringbuf.c \
@@ -73,7 +73,6 @@ SRC_FILES += \
   $(PROJ_DIR)/src/nchorder_buttons.c \
   $(PROJ_DIR)/src/nchorder_chords.c \
   $(PROJ_DIR)/src/nchorder_usb.c \
-  $(PROJ_DIR)/src/nchorder_storage.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_usbd.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
@@ -82,12 +81,6 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/usbd/app_usbd_string_desc.c \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/app_usbd_hid.c \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/kbd/app_usbd_hid_kbd.c \
-  $(SDK_ROOT)/components/libraries/usbd/class/msc/app_usbd_msc.c \
-  $(SDK_ROOT)/components/libraries/block_dev/ram/nrf_block_dev_ram.c \
-  $(SDK_ROOT)/external/fatfs/src/ff.c \
-  $(SDK_ROOT)/external/fatfs/port/diskio_blkdev.c \
-  $(PROJ_DIR)/src/nchorder_msc.c \
-  $(PROJ_DIR)/src/nchorder_ini.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \

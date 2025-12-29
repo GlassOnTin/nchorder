@@ -6,7 +6,6 @@
 
 #include "nchorder_usb.h"
 #include "nchorder_config.h"
-#include "nchorder_msc.h"
 
 #include "app_usbd.h"
 #include "app_usbd_core.h"
@@ -93,19 +92,11 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Suspended");
             m_usb_suspended = true;
             app_usbd_suspend_req();
-            // Note: Do NOT call nchorder_msc_on_disconnect() here.
-            // SUSPEND means host paused communication, but USB MSC still owns
-            // the block device. Trying to access FatFS here causes a crash.
-            // Config reload only happens on STOPPED or POWER_REMOVED.
             break;
 
         case APP_USBD_EVT_DRV_RESUME:
             NRF_LOG_INFO("USB: Resumed");
             m_usb_suspended = false;
-#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
-            // Mark USB as active (host resumed communication)
-            nchorder_msc_set_active();
-#endif
             break;
 
         case APP_USBD_EVT_STARTED:
@@ -121,10 +112,6 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Stopped");
             m_usb_connected = false;
             app_usbd_disable();
-#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
-            // Request config reload when USB stops
-            nchorder_msc_on_disconnect();
-#endif
             break;
 
         case APP_USBD_EVT_POWER_DETECTED:
@@ -139,10 +126,6 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             NRF_LOG_INFO("USB: Power removed");
             m_usb_connected = false;
             app_usbd_stop();
-#if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
-            // Request config reload when USB power is removed
-            nchorder_msc_on_disconnect();
-#endif
             break;
 
         case APP_USBD_EVT_POWER_READY:
@@ -360,16 +343,15 @@ void nchorder_usb_process(void)
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
 void nchorder_usb_check_disconnect(void)
 {
+    // Clear pending activation flag after delay (previously used for MSC)
     if (m_usb_activation_pending && m_usb_connected)
     {
-        // Wait for USB to settle before marking active
         if (m_usb_activation_delay > 0)
         {
             m_usb_activation_delay--;
             return;
         }
         m_usb_activation_pending = false;
-        nchorder_msc_set_active();
     }
 }
 #endif
