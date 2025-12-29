@@ -223,8 +223,9 @@ ret_code_t trill_read(trill_sensor_t *sensor)
             uint16_t x = read_be16(&buf[DATA_OFFSET + 10 + i * 2]);    // Vertical = X
             uint16_t size = read_be16(&buf[DATA_OFFSET + 20 + i * 2]);
 
-            // Size of 0 or 0xFFFF means no touch
-            if (size > 0 && size != 0xFFFF) {
+            // Filter invalid touches: size or position of 0 or 0xFFFF means no touch
+            if (size > 0 && size != 0xFFFF &&
+                x != 0xFFFF && y != 0xFFFF) {
                 sensor->touches_2d[sensor->num_touches].x = x;
                 sensor->touches_2d[sensor->num_touches].y = y;
                 sensor->touches_2d[sensor->num_touches].size = size;
@@ -240,8 +241,8 @@ ret_code_t trill_read(trill_sensor_t *sensor)
             uint16_t pos = read_be16(&buf[DATA_OFFSET + i * 2]);
             uint16_t size = read_be16(&buf[DATA_OFFSET + 10 + i * 2]);
 
-            // Size of 0 or 0xFFFF means no touch
-            if (size > 0 && size != 0xFFFF) {
+            // Filter invalid touches: size or position of 0 or 0xFFFF means no touch
+            if (size > 0 && size != 0xFFFF && pos != 0xFFFF) {
                 sensor->touches[sensor->num_touches].position = pos;
                 sensor->touches[sensor->num_touches].size = size;
                 sensor->num_touches++;
