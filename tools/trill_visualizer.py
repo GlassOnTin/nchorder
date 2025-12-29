@@ -188,13 +188,13 @@ class TrillVisualizer:
         output.append("=" * 50)
         output.append("")
 
-        # Square (channel 0)
-        output.extend(self.render_square(self.sensors[0]))
-        output.append("")
-
-        # Bars (channels 1-3)
-        for ch in [1, 2, 3]:
-            output.extend(self.render_bar(self.sensors[ch]))
+        # Render each sensor based on its actual type
+        for ch in range(4):
+            sensor = self.sensors[ch]
+            if sensor['type'] == '2D':
+                output.extend(self.render_square(sensor))
+            else:
+                output.extend(self.render_bar(sensor))
             output.append("")
 
         # Status
