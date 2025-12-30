@@ -6,6 +6,7 @@
 
 #include "nchorder_usb.h"
 #include "nchorder_config.h"
+#include "nchorder_cdc.h"
 
 #include "app_usbd.h"
 #include "app_usbd_core.h"
@@ -187,6 +188,14 @@ uint32_t nchorder_usb_init(void)
     {
         NRF_LOG_ERROR("USB: class_append failed: %d", ret);
         return ret;
+    }
+
+    // Initialize CDC class for config app communication
+    ret = nchorder_cdc_init();
+    if (ret != NRF_SUCCESS)
+    {
+        NRF_LOG_WARNING("USB: CDC init failed: %d (continuing without CDC)", ret);
+        // Don't fail - HID still works
     }
 
     NRF_LOG_INFO("USB: Init complete (call nchorder_usb_start after adding all classes)");
