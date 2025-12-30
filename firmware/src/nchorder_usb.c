@@ -7,6 +7,7 @@
 #include "nchorder_usb.h"
 #include "nchorder_config.h"
 #include "nchorder_cdc.h"
+#include "nchorder_mouse.h"
 
 #include "app_usbd.h"
 #include "app_usbd_core.h"
@@ -188,6 +189,14 @@ uint32_t nchorder_usb_init(void)
     {
         NRF_LOG_ERROR("USB: class_append failed: %d", ret);
         return ret;
+    }
+
+    // Initialize HID mouse class for square sensor control
+    ret = nchorder_mouse_init();
+    if (ret != NRF_SUCCESS)
+    {
+        NRF_LOG_WARNING("USB: Mouse init failed: %d (continuing without mouse)", ret);
+        // Don't fail - keyboard still works
     }
 
     // Initialize CDC class for config app communication
