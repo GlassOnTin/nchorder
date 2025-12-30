@@ -17,11 +17,13 @@
 #include "nchorder_i2c.h"
 #include "nchorder_trill.h"
 #include "nchorder_config.h"
+#include "nchorder_mouse.h"
 #include "app_timer.h"
 #include "app_scheduler.h"
 #include "nrf_log.h"
 #include "nrf_gpio.h"
 #include "SEGGER_RTT.h"
+#include <stdlib.h>  // for abs()
 
 // Enable RTT debug output for Trill sensors (for trill_visualizer.py)
 #define TRILL_DEBUG_RTT 1
@@ -44,9 +46,28 @@
 // Release threshold (lower than press threshold for hysteresis)
 #define TRILL_RELEASE_SIZE          250
 
+// Gesture detection thresholds (tune via experimentation)
+#define GESTURE_SLIDE_THRESHOLD     150   // Movement units to trigger mouse mode
+#define GESTURE_TAP_TIMEOUT_MS      250   // Max duration for valid tap
+#define GESTURE_MOUSE_SCALE         8     // Divisor: 3200 range → reasonable mouse delta
+
 // ============================================================================
 // STATE
 // ============================================================================
+
+// Gesture tracking for square sensor (slide vs tap detection)
+typedef struct {
+    bool     active;           // Touch currently active
+    uint16_t start_x;          // Position when touch began
+    uint16_t start_y;
+    uint16_t prev_x;           // Position in previous frame
+    uint16_t prev_y;
+    uint32_t start_time;       // app_timer_cnt_get() at touch start
+    uint16_t cumulative_dist;  // Total movement since touch start
+    bool     is_mouse_mode;    // True once slide threshold exceeded
+} gesture_state_t;
+
+static gesture_state_t m_gesture = {0};
 
 // Polling timer
 APP_TIMER_DEF(m_poll_timer);
@@ -119,6 +140,83 @@ static uint8_t square_position_to_quadrant(uint16_t x, uint16_t y)
 }
 
 /**
+ * Process square sensor for gesture detection (slide vs tap)
+ *
+ * Sliding → mouse movement (via nchorder_mouse_move)
+ * Quick tap → button press (handled by build_button_mask checking m_gesture.is_mouse_mode)
+ */
+static void process_square_gesture(trill_sensor_t *square)
+{
+    uint32_t now = app_timer_cnt_get();
+
+    // Check if there's a valid touch
+    bool has_touch = (square->num_touches > 0 &&
+                      square->touches_2d[0].size >= TRILL_MIN_TOUCH_SIZE &&
+                      square->touches_2d[0].x != 0xFFFF &&
+                      square->touches_2d[0].y != 0xFFFF);
+
+    if (has_touch) {
+        uint16_t x = square->touches_2d[0].x;
+        uint16_t y = square->touches_2d[0].y;
+
+        if (!m_gesture.active) {
+            // New touch starting
+            m_gesture.active = true;
+            m_gesture.start_x = x;
+            m_gesture.start_y = y;
+            m_gesture.prev_x = x;
+            m_gesture.prev_y = y;
+            m_gesture.start_time = now;
+            m_gesture.cumulative_dist = 0;
+            m_gesture.is_mouse_mode = false;
+            NRF_LOG_DEBUG("Gesture: Touch start at (%d,%d)", x, y);
+        } else {
+            // Continuing touch - calculate delta
+            int16_t dx = (int16_t)x - (int16_t)m_gesture.prev_x;
+            int16_t dy = (int16_t)y - (int16_t)m_gesture.prev_y;
+
+            // Accumulate total movement
+            m_gesture.cumulative_dist += abs(dx) + abs(dy);
+
+            // Check if we should enter mouse mode
+            if (!m_gesture.is_mouse_mode &&
+                m_gesture.cumulative_dist >= GESTURE_SLIDE_THRESHOLD) {
+                m_gesture.is_mouse_mode = true;
+                NRF_LOG_INFO("Gesture: Mouse mode activated (dist=%d)", m_gesture.cumulative_dist);
+            }
+
+            // If in mouse mode, send mouse delta
+            if (m_gesture.is_mouse_mode) {
+                int8_t mouse_dx = dx / GESTURE_MOUSE_SCALE;
+                int8_t mouse_dy = dy / GESTURE_MOUSE_SCALE;
+                if (mouse_dx != 0 || mouse_dy != 0) {
+                    nchorder_mouse_move(mouse_dx, mouse_dy);
+                }
+            }
+
+            m_gesture.prev_x = x;
+            m_gesture.prev_y = y;
+        }
+    } else if (m_gesture.active) {
+        // Touch released
+        uint32_t duration_ticks = app_timer_cnt_diff_compute(now, m_gesture.start_time);
+        uint32_t duration_ms = (duration_ticks * 1000) / APP_TIMER_CLOCK_FREQ;
+
+        if (!m_gesture.is_mouse_mode && duration_ms < GESTURE_TAP_TIMEOUT_MS) {
+            // It was a tap! Log it (button handled by build_button_mask)
+            uint8_t quadrant = square_position_to_quadrant(m_gesture.start_x, m_gesture.start_y);
+            NRF_LOG_INFO("Gesture: Tap detected Q%d at (%d,%d) dur=%dms",
+                         quadrant, m_gesture.start_x, m_gesture.start_y, duration_ms);
+        } else if (m_gesture.is_mouse_mode) {
+            NRF_LOG_DEBUG("Gesture: Mouse mode ended (dist=%d)", m_gesture.cumulative_dist);
+        }
+
+        m_gesture.active = false;
+        m_gesture.is_mouse_mode = false;
+    }
+}
+
+/**
  * Build button bitmask from all sensor readings
  *
  * Column-oriented mapping (3 bars = 3 columns, 4 zones = 4 finger rows):
@@ -134,8 +232,9 @@ static uint16_t build_button_mask(void)
     uint16_t min_touch_size = TRILL_MIN_TOUCH_SIZE;
 
     // === Thumb buttons from Trill Square (channel 0) ===
+    // Only register button press if NOT in mouse mode (gesture detection handles this)
     trill_sensor_t *square = &m_sensors[MUX_CH_THUMB];
-    if (square->initialized && square->num_touches > 0) {
+    if (square->initialized && square->num_touches > 0 && !m_gesture.is_mouse_mode) {
         // Process all touches on Square
         for (int t = 0; t < square->num_touches; t++) {
             uint16_t x = square->touches_2d[t].x;
@@ -319,6 +418,12 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
 #endif
 
     (void)any_touch;  // Suppress unused warning
+
+    // Process gesture on square sensor (slide vs tap detection)
+    // Must be called BEFORE build_button_mask so m_gesture.is_mouse_mode is set
+    if (m_sensors[MUX_CH_THUMB].initialized) {
+        process_square_gesture(&m_sensors[MUX_CH_THUMB]);
+    }
 
     // Build button mask from sensor readings
     uint16_t new_raw_state = build_button_mask();
