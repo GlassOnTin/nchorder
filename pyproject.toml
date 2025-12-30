@@ -25,11 +25,16 @@ classifiers = [
 [project.scripts]
 northern-chorder = "nchorder_tools.cli:main"
 nchorder = "nchorder_tools.cli:main"
+nchorder-gui = "nchorder_tools.gui.app:main"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
+]
+gui = [
+    "kivy>=2.2.0",
+    "pyserial>=3.5",
 ]
 
 [tool.setuptools.packages.find]
