@@ -164,7 +164,7 @@ ret_code_t trill_init(trill_sensor_t *sensor, uint8_t i2c_addr)
 ret_code_t trill_read(trill_sensor_t *sensor)
 {
     ret_code_t err;
-    uint8_t buf[36];  // Enough for centroid data (2D needs 34 bytes)
+    uint8_t buf[48];  // Enough for centroid data (2D needs 4 header + 40 data = 44 bytes)
     size_t read_len;
 
     if (sensor == NULL || !sensor->initialized) {
@@ -178,9 +178,9 @@ ret_code_t trill_read(trill_sensor_t *sensor)
     }
 
     // Read centroid data (including 4-byte header from offset 0)
-    // 1D sensors: 4 header + 20 data bytes
-    // 2D sensors: 4 header + 30 data bytes
-    read_len = sensor->is_2d ? 34 : 24;
+    // 1D sensors: 4 header + 20 data bytes (5 pos + 5 size, 2 bytes each)
+    // 2D sensors: 4 header + 40 data bytes (5 Vpos + 5 Vsize + 5 Hpos + 5 Hsize, 2 bytes each)
+    read_len = sensor->is_2d ? 44 : 24;
 
     err = nchorder_i2c_read(sensor->i2c_addr, buf, read_len);
     if (err != NRF_SUCCESS) {
@@ -188,24 +188,29 @@ ret_code_t trill_read(trill_sensor_t *sensor)
     }
 
     // Debug: dump raw bytes for 2D sensor (header + data)
+    // 2D format: [4 header][10 Vpos][10 Vsize][10 Hpos][10 Hsize] = 44 bytes
     if (sensor->is_2d) {
         static uint32_t dbg_cnt = 0;
         if ((dbg_cnt++ % 50) == 0) {
             // Header: bytes 0-3
             SEGGER_RTT_printf(0, "RAW2D:[%02X%02X%02X%02X]",
                 buf[0], buf[1], buf[2], buf[3]);
-            // Y positions: bytes 4-13
-            SEGGER_RTT_printf(0, "Y:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
+            // Vpos (Y positions): bytes 4-13
+            SEGGER_RTT_printf(0, "Vp:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
                 buf[4], buf[5], buf[6], buf[7], buf[8],
                 buf[9], buf[10], buf[11], buf[12], buf[13]);
-            // X positions: bytes 14-23
-            SEGGER_RTT_printf(0, "X:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
+            // Vsize (Y sizes): bytes 14-23
+            SEGGER_RTT_printf(0, "Vs:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
                 buf[14], buf[15], buf[16], buf[17], buf[18],
                 buf[19], buf[20], buf[21], buf[22], buf[23]);
-            // Sizes: bytes 24-33
-            SEGGER_RTT_printf(0, "S:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
+            // Hpos (X positions): bytes 24-33
+            SEGGER_RTT_printf(0, "Hp:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X-",
                 buf[24], buf[25], buf[26], buf[27], buf[28],
                 buf[29], buf[30], buf[31], buf[32], buf[33]);
+            // Hsize (X sizes): bytes 34-43
+            SEGGER_RTT_printf(0, "Hs:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
+                buf[34], buf[35], buf[36], buf[37], buf[38],
+                buf[39], buf[40], buf[41], buf[42], buf[43]);
         }
     }
 
@@ -214,23 +219,54 @@ ret_code_t trill_read(trill_sensor_t *sensor)
 
     if (sensor->is_2d) {
         // Trill Square 2D centroid format (after 4-byte header):
-        // Bytes 4-13:  Horizontal (Y) positions for touches 0-4 (5 * 2 bytes)
-        // Bytes 14-23: Vertical (X) positions for touches 0-4 (5 * 2 bytes)
-        // Bytes 24-33: Touch sizes for touches 0-4 (5 * 2 bytes)
+        // The sensor reports V (vertical/Y) and H (horizontal/X) touches independently.
+        // A single physical touch may appear at DIFFERENT array indices for V and H.
+        // We need to find the first valid entry in each direction and combine them.
+        //
+        // Bytes 4-13:  Vertical positions (Y) for slots 0-4 (5 * 2 bytes)
+        // Bytes 14-23: Vertical sizes for slots 0-4 (5 * 2 bytes)
+        // Bytes 24-33: Horizontal positions (X) for slots 0-4 (5 * 2 bytes)
+        // Bytes 34-43: Horizontal sizes for slots 0-4 (5 * 2 bytes)
         const int DATA_OFFSET = 4;  // Skip header
-        for (int i = 0; i < TRILL_MAX_TOUCHES_2D; i++) {
-            uint16_t y = read_be16(&buf[DATA_OFFSET + i * 2]);         // Horizontal = Y
-            uint16_t x = read_be16(&buf[DATA_OFFSET + 10 + i * 2]);    // Vertical = X
-            uint16_t size = read_be16(&buf[DATA_OFFSET + 20 + i * 2]);
 
-            // Filter invalid touches: size or position of 0 or 0xFFFF means no touch
-            if (size > 0 && size != 0xFFFF &&
-                x != 0xFFFF && y != 0xFFFF) {
-                sensor->touches_2d[sensor->num_touches].x = x;
-                sensor->touches_2d[sensor->num_touches].y = y;
-                sensor->touches_2d[sensor->num_touches].size = size;
-                sensor->num_touches++;
+        // Find first valid vertical touch (Y)
+        uint16_t first_y = 0xFFFF;
+        uint16_t first_y_size = 0;
+        for (int i = 0; i < TRILL_MAX_TOUCHES_2D; i++) {
+            uint16_t y = read_be16(&buf[DATA_OFFSET + i * 2]);
+            uint16_t y_size = read_be16(&buf[DATA_OFFSET + 10 + i * 2]);
+            // Accept touch if position is valid (even if size is 0 - sensor quirk)
+            if (y != 0xFFFF && y != 0) {
+                first_y = y;
+                first_y_size = y_size;
+                break;
             }
+        }
+
+        // Find first valid horizontal touch (X)
+        uint16_t first_x = 0xFFFF;
+        uint16_t first_x_size = 0;
+        for (int i = 0; i < TRILL_MAX_TOUCHES_2D; i++) {
+            uint16_t x = read_be16(&buf[DATA_OFFSET + 20 + i * 2]);
+            uint16_t x_size = read_be16(&buf[DATA_OFFSET + 30 + i * 2]);
+            // Accept touch if position is valid (even if size is 0 - sensor quirk)
+            if (x != 0xFFFF && x != 0) {
+                first_x = x;
+                first_x_size = x_size;
+                break;
+            }
+        }
+
+        // If we found both X and Y, report as a 2D touch
+        if (first_x != 0xFFFF && first_y != 0xFFFF) {
+            // Use max of sizes (since one might be 0)
+            uint16_t size = (first_y_size > first_x_size) ? first_y_size : first_x_size;
+            if (size == 0) size = 100;  // Default size if both are 0
+
+            sensor->touches_2d[0].x = first_x;
+            sensor->touches_2d[0].y = first_y;
+            sensor->touches_2d[0].size = size;
+            sensor->num_touches = 1;
         }
     } else {
         // 1D format (after 4-byte header):

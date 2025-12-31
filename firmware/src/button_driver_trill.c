@@ -18,15 +18,21 @@
 #include "nchorder_trill.h"
 #include "nchorder_config.h"
 #include "nchorder_mouse.h"
+#include "nchorder_cdc.h"
 #include "app_timer.h"
 #include "app_scheduler.h"
 #include "nrf_log.h"
 #include "nrf_gpio.h"
 #include "SEGGER_RTT.h"
-#include <stdlib.h>  // for abs()
+
+// Simple abs for int16_t (avoid stdlib dependency)
+static inline int16_t abs16(int16_t x) { return x < 0 ? -x : x; }
 
 // Enable RTT debug output for Trill sensors (for trill_visualizer.py)
 #define TRILL_DEBUG_RTT 1
+
+// Enable noise statistics collection
+#define TRILL_NOISE_STATS 0
 
 // simple_delay_ms is defined in nchorder_trill.c (included before this file)
 
@@ -40,16 +46,21 @@
 // Debounce time (ms) - longer than GPIO for capacitive sensors
 #define TRILL_DEBOUNCE_MS           30
 
-// Minimum touch size to register as button press (increased to reduce noise/voltage transients)
-#define TRILL_MIN_TOUCH_SIZE        500
+// Minimum touch size to register as button press
+// Square (as Flex): noise floor observed up to 600, require higher to filter
+// Bars: noise floor is ~100-260, need margin above peaks
+#define TRILL_MIN_TOUCH_SIZE_SQUARE 800
+#define TRILL_MIN_TOUCH_SIZE_BAR    350
 
 // Release threshold (lower than press threshold for hysteresis)
 #define TRILL_RELEASE_SIZE          250
 
 // Gesture detection thresholds (tune via experimentation)
-#define GESTURE_SLIDE_THRESHOLD     150   // Movement units to trigger mouse mode
-#define GESTURE_TAP_TIMEOUT_MS      250   // Max duration for valid tap
-#define GESTURE_MOUSE_SCALE         8     // Divisor: 3200 range → reasonable mouse delta
+#define GESTURE_SLIDE_THRESHOLD     300   // Movement units to trigger mouse mode (lower = more sensitive slide)
+#define GESTURE_TAP_MIN_FRAMES      5     // Minimum frames for valid tap (~75ms, filter noise spikes)
+#define GESTURE_TAP_MAX_FRAMES      20    // Max frames for valid tap (~300ms at 15ms/frame)
+#define GESTURE_MIN_MOVE_FRAMES     3     // Minimum frames before mouse mode can activate
+#define GESTURE_MOUSE_SCALE         6     // Divisor: 3200 range → reasonable mouse delta (lower = faster)
 
 // ============================================================================
 // STATE
@@ -62,7 +73,7 @@ typedef struct {
     uint16_t start_y;
     uint16_t prev_x;           // Position in previous frame
     uint16_t prev_y;
-    uint32_t start_time;       // app_timer_cnt_get() at touch start
+    uint16_t frame_count;      // Frames since touch start (15ms/frame)
     uint16_t cumulative_dist;  // Total movement since touch start
     bool     is_mouse_mode;    // True once slide threshold exceeded
 } gesture_state_t;
@@ -93,6 +104,30 @@ static volatile bool m_debounce_pending = false;
 // Initialization complete flag
 static bool m_initialized = false;
 
+// Scan results for diagnostics (which addresses found on each channel)
+static uint8_t m_scan_results[MUX_NUM_CHANNELS];  // Stores first found address per channel, 0 if none
+
+// Settling period - ignore touches for first N polls after init (suppress boot noise)
+#define SETTLING_POLL_COUNT     40   // ~600ms at 15ms/poll
+static uint16_t m_settling_polls = 0;
+
+#if TRILL_NOISE_STATS
+// Noise statistics for each sensor
+typedef struct {
+    uint32_t sample_count;
+    uint16_t size_min;
+    uint16_t size_max;
+    uint32_t size_sum;
+    uint16_t pos_min;
+    uint16_t pos_max;
+    uint16_t spurious_count;  // Touches below threshold
+} noise_stats_t;
+
+static noise_stats_t m_noise_stats[MUX_NUM_CHANNELS] = {0};
+static uint32_t m_stats_interval = 0;
+#define NOISE_STATS_INTERVAL 200  // Output stats every N polls (~3 seconds)
+#endif
+
 // Button names for debug output
 static const char* const m_button_names[NCHORDER_TOTAL_BUTTONS] = {
     "T1", "F1L", "F1M", "F1R",
@@ -106,15 +141,32 @@ static const char* const m_button_names[NCHORDER_TOTAL_BUTTONS] = {
 // ============================================================================
 
 /**
+ * Convert position to zone (0-3) - direct mapping (no inversion)
+ * Used for thumb sensor in 1D mode
+ */
+static uint8_t position_to_zone_direct(uint16_t position)
+{
+    if (position < TRILL_ZONE_0_END) return 0;  // 0-800 → T1
+    if (position < TRILL_ZONE_1_END) return 1;  // 800-1600 → T2
+    if (position < TRILL_ZONE_2_END) return 2;  // 1600-2400 → T3
+    return 3;  // 2400-3200 → T4
+}
+
+/**
  * Convert Trill Bar position to zone (0-3)
  * Each zone corresponds to one finger row (index, middle, ring, pinky)
+ * Bar is mounted with high position values at the top (index finger),
+ * so we invert the position before mapping.
  */
 static uint8_t bar_position_to_zone(uint16_t position)
 {
-    if (position < TRILL_ZONE_0_END) return 0;  // Index finger
-    if (position < TRILL_ZONE_1_END) return 1;  // Middle finger
-    if (position < TRILL_ZONE_2_END) return 2;  // Ring finger
-    return 3;  // Pinky finger
+    // Invert: physical top (index) = high position, but we want zone 0
+    uint16_t inverted = (position >= 3200) ? 0 : (3200 - position);
+
+    if (inverted < TRILL_ZONE_0_END) return 0;  // Index finger (top)
+    if (inverted < TRILL_ZONE_1_END) return 1;  // Middle finger
+    if (inverted < TRILL_ZONE_2_END) return 2;  // Ring finger
+    return 3;  // Pinky finger (bottom)
 }
 
 /**
@@ -140,24 +192,42 @@ static uint8_t square_position_to_quadrant(uint16_t x, uint16_t y)
 }
 
 /**
- * Process square sensor for gesture detection (slide vs tap)
+ * Process thumb sensor for gesture detection (slide vs tap)
  *
- * Sliding → mouse movement (via nchorder_mouse_move)
+ * Works for both 2D (Square) and 1D (Flex) modes:
+ * - 2D: Sliding → mouse X/Y movement
+ * - 1D: Sliding → mouse X movement (Y fixed at 0)
+ *
  * Quick tap → button press (handled by build_button_mask checking m_gesture.is_mouse_mode)
  */
-static void process_square_gesture(trill_sensor_t *square)
+static void process_square_gesture(trill_sensor_t *sensor)
 {
-    uint32_t now = app_timer_cnt_get();
+    // Check if there's a valid touch (works for both 1D and 2D)
+    bool has_touch = false;
+    uint16_t x = 0, y = 0;
 
-    // Check if there's a valid touch
-    bool has_touch = (square->num_touches > 0 &&
-                      square->touches_2d[0].size >= TRILL_MIN_TOUCH_SIZE &&
-                      square->touches_2d[0].x != 0xFFFF &&
-                      square->touches_2d[0].y != 0xFFFF);
+    if (sensor->is_2d) {
+        // 2D mode: use touches_2d
+        has_touch = (sensor->num_touches > 0 &&
+                     sensor->touches_2d[0].size >= TRILL_MIN_TOUCH_SIZE_SQUARE &&
+                     sensor->touches_2d[0].x != 0xFFFF &&
+                     sensor->touches_2d[0].y != 0xFFFF);
+        if (has_touch) {
+            x = sensor->touches_2d[0].x;
+            y = sensor->touches_2d[0].y;
+        }
+    } else {
+        // 1D mode: use touches array, position maps to X, no Y
+        has_touch = (sensor->num_touches > 0 &&
+                     sensor->touches[0].size >= TRILL_MIN_TOUCH_SIZE_SQUARE &&
+                     sensor->touches[0].position != 0xFFFF);
+        if (has_touch) {
+            x = sensor->touches[0].position;
+            y = 1600;  // Fixed Y at center for 1D
+        }
+    }
 
     if (has_touch) {
-        uint16_t x = square->touches_2d[0].x;
-        uint16_t y = square->touches_2d[0].y;
 
         if (!m_gesture.active) {
             // New touch starting
@@ -166,7 +236,7 @@ static void process_square_gesture(trill_sensor_t *square)
             m_gesture.start_y = y;
             m_gesture.prev_x = x;
             m_gesture.prev_y = y;
-            m_gesture.start_time = now;
+            m_gesture.frame_count = 0;
             m_gesture.cumulative_dist = 0;
             m_gesture.is_mouse_mode = false;
             NRF_LOG_DEBUG("Gesture: Touch start at (%d,%d)", x, y);
@@ -175,14 +245,19 @@ static void process_square_gesture(trill_sensor_t *square)
             int16_t dx = (int16_t)x - (int16_t)m_gesture.prev_x;
             int16_t dy = (int16_t)y - (int16_t)m_gesture.prev_y;
 
-            // Accumulate total movement
-            m_gesture.cumulative_dist += abs(dx) + abs(dy);
+            // Increment frame counter
+            m_gesture.frame_count++;
 
-            // Check if we should enter mouse mode
+            // Accumulate total movement
+            m_gesture.cumulative_dist += abs16(dx) + abs16(dy);
+
+            // Check if we should enter mouse mode (need minimum frames AND distance)
             if (!m_gesture.is_mouse_mode &&
+                m_gesture.frame_count >= GESTURE_MIN_MOVE_FRAMES &&
                 m_gesture.cumulative_dist >= GESTURE_SLIDE_THRESHOLD) {
                 m_gesture.is_mouse_mode = true;
-                NRF_LOG_INFO("Gesture: Mouse mode activated (dist=%d)", m_gesture.cumulative_dist);
+                NRF_LOG_INFO("Gesture: Mouse mode (dist=%d, frames=%d)",
+                             m_gesture.cumulative_dist, m_gesture.frame_count);
             }
 
             // If in mouse mode, send mouse delta
@@ -198,17 +273,26 @@ static void process_square_gesture(trill_sensor_t *square)
             m_gesture.prev_y = y;
         }
     } else if (m_gesture.active) {
-        // Touch released
-        uint32_t duration_ticks = app_timer_cnt_diff_compute(now, m_gesture.start_time);
-        uint32_t duration_ms = (duration_ticks * 1000) / APP_TIMER_CLOCK_FREQ;
-
-        if (!m_gesture.is_mouse_mode && duration_ms < GESTURE_TAP_TIMEOUT_MS) {
-            // It was a tap! Log it (button handled by build_button_mask)
-            uint8_t quadrant = square_position_to_quadrant(m_gesture.start_x, m_gesture.start_y);
-            NRF_LOG_INFO("Gesture: Tap detected Q%d at (%d,%d) dur=%dms",
-                         quadrant, m_gesture.start_x, m_gesture.start_y, duration_ms);
+        // Touch released - check if it was a valid tap
+        if (!m_gesture.is_mouse_mode &&
+            m_gesture.frame_count >= GESTURE_TAP_MIN_FRAMES &&
+            m_gesture.frame_count < GESTURE_TAP_MAX_FRAMES) {
+            // It was a valid tap! Log it (button handled by build_button_mask)
+            if (sensor->is_2d) {
+                uint8_t quadrant = square_position_to_quadrant(m_gesture.start_x, m_gesture.start_y);
+                NRF_LOG_INFO("Gesture: Tap Q%d at (%d,%d) frames=%d",
+                             quadrant, m_gesture.start_x, m_gesture.start_y, m_gesture.frame_count);
+            } else {
+                uint8_t zone = position_to_zone_direct(m_gesture.start_x);
+                NRF_LOG_INFO("Gesture: Tap Z%d at pos=%d frames=%d",
+                             zone, m_gesture.start_x, m_gesture.frame_count);
+            }
+        } else if (m_gesture.frame_count < GESTURE_TAP_MIN_FRAMES) {
+            // Too short - filter out as noise
+            NRF_LOG_DEBUG("Gesture: Ignored noise (frames=%d < %d)",
+                          m_gesture.frame_count, GESTURE_TAP_MIN_FRAMES);
         } else if (m_gesture.is_mouse_mode) {
-            NRF_LOG_DEBUG("Gesture: Mouse mode ended (dist=%d)", m_gesture.cumulative_dist);
+            NRF_LOG_DEBUG("Gesture: Mouse ended (dist=%d)", m_gesture.cumulative_dist);
         }
 
         m_gesture.active = false;
@@ -228,32 +312,53 @@ static uint16_t build_button_mask(void)
 {
     uint16_t mask = 0;
 
-    // Use hardcoded threshold for now (CONFIG.INI support to be added later)
-    uint16_t min_touch_size = TRILL_MIN_TOUCH_SIZE;
+    // === Thumb buttons from Trill sensor on channel 0 ===
+    // Note: Sensor may be 2D (Square) or 1D (Flex) depending on firmware
+    trill_sensor_t *thumb = &m_sensors[MUX_CH_THUMB];
+    if (thumb->initialized && thumb->num_touches > 0) {
+        if (thumb->is_2d) {
+            // 2D mode: map quadrants to T1-T4
+            bool valid_2d_touch = (!m_gesture.is_mouse_mode &&
+                                   m_gesture.active &&
+                                   m_gesture.frame_count >= GESTURE_TAP_MIN_FRAMES);
+            if (valid_2d_touch) {
+                for (int t = 0; t < thumb->num_touches; t++) {
+                    uint16_t x = thumb->touches_2d[t].x;
+                    uint16_t y = thumb->touches_2d[t].y;
+                    uint16_t size = thumb->touches_2d[t].size;
 
-    // === Thumb buttons from Trill Square (channel 0) ===
-    // Only register button press if NOT in mouse mode (gesture detection handles this)
-    trill_sensor_t *square = &m_sensors[MUX_CH_THUMB];
-    if (square->initialized && square->num_touches > 0 && !m_gesture.is_mouse_mode) {
-        // Process all touches on Square
-        for (int t = 0; t < square->num_touches; t++) {
-            uint16_t x = square->touches_2d[t].x;
-            uint16_t y = square->touches_2d[t].y;
-            uint16_t size = square->touches_2d[t].size;
+                    if (size >= TRILL_MIN_TOUCH_SIZE_SQUARE) {
+                        uint8_t quadrant = square_position_to_quadrant(x, y);
+                        switch (quadrant) {
+                            case 0: mask |= (1 << BTN_T1); break;
+                            case 1: mask |= (1 << BTN_T2); break;
+                            case 2: mask |= (1 << BTN_T3); break;
+                            case 3: mask |= (1 << BTN_T4); break;
+                        }
+                    }
+                }
+            }
+        } else {
+            // 1D mode (Flex): map position zones to T1-T4
+            // Position 0-800 → T1, 800-1600 → T2, 1600-2400 → T3, 2400-3200 → T4
+            // Only register button if NOT in mouse mode and valid tap gesture
+            bool valid_1d_touch = (!m_gesture.is_mouse_mode &&
+                                   m_gesture.active &&
+                                   m_gesture.frame_count >= GESTURE_TAP_MIN_FRAMES);
+            if (valid_1d_touch) {
+                for (int t = 0; t < thumb->num_touches; t++) {
+                    uint16_t pos = thumb->touches[t].position;
+                    uint16_t size = thumb->touches[t].size;
 
-            if (size >= min_touch_size) {
-                uint8_t quadrant = square_position_to_quadrant(x, y);
-
-                // Map quadrant to thumb button bit
-                // Q0 (top-left) → T1 (bit 0)
-                // Q1 (top-right) → T2 (bit 4)
-                // Q2 (bottom-left) → T3 (bit 8)
-                // Q3 (bottom-right) → T4 (bit 12)
-                switch (quadrant) {
-                    case 0: mask |= (1 << BTN_T1); break;
-                    case 1: mask |= (1 << BTN_T2); break;
-                    case 2: mask |= (1 << BTN_T3); break;
-                    case 3: mask |= (1 << BTN_T4); break;
+                    if (size >= TRILL_MIN_TOUCH_SIZE_SQUARE) {
+                        uint8_t zone = position_to_zone_direct(pos);  // Direct mapping for thumb
+                        switch (zone) {
+                            case 0: mask |= (1 << BTN_T1); break;
+                            case 1: mask |= (1 << BTN_T2); break;
+                            case 2: mask |= (1 << BTN_T3); break;
+                            case 3: mask |= (1 << BTN_T4); break;
+                        }
+                    }
                 }
             }
         }
@@ -267,7 +372,7 @@ static uint16_t build_button_mask(void)
             uint16_t pos = bar_l->touches[t].position;
             uint16_t size = bar_l->touches[t].size;
 
-            if (size >= min_touch_size) {
+            if (size >= TRILL_MIN_TOUCH_SIZE_BAR) {
                 uint8_t zone = bar_position_to_zone(pos);
 
                 switch (zone) {
@@ -288,7 +393,7 @@ static uint16_t build_button_mask(void)
             uint16_t pos = bar_m->touches[t].position;
             uint16_t size = bar_m->touches[t].size;
 
-            if (size >= min_touch_size) {
+            if (size >= TRILL_MIN_TOUCH_SIZE_BAR) {
                 uint8_t zone = bar_position_to_zone(pos);
 
                 switch (zone) {
@@ -309,7 +414,7 @@ static uint16_t build_button_mask(void)
             uint16_t pos = bar_r->touches[t].position;
             uint16_t size = bar_r->touches[t].size;
 
-            if (size >= min_touch_size) {
+            if (size >= TRILL_MIN_TOUCH_SIZE_BAR) {
                 uint8_t zone = bar_position_to_zone(pos);
 
                 switch (zone) {
@@ -388,7 +493,64 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
         } else if (m_sensors[ch].num_touches > 0) {
             any_touch = true;
         }
+
+#if TRILL_NOISE_STATS
+        // Collect noise statistics for each touch
+        trill_sensor_t *s = &m_sensors[ch];
+        if (s->num_touches > 0) {
+            noise_stats_t *ns = &m_noise_stats[ch];
+            uint16_t size, pos;
+
+            if (s->is_2d) {
+                size = s->touches_2d[0].size;
+                pos = s->touches_2d[0].y;  // Use Y position for Square
+            } else {
+                size = s->touches[0].size;
+                pos = s->touches[0].position;
+            }
+
+            // Initialize min on first sample
+            if (ns->sample_count == 0) {
+                ns->size_min = size;
+                ns->size_max = size;
+                ns->pos_min = pos;
+                ns->pos_max = pos;
+            } else {
+                if (size < ns->size_min) ns->size_min = size;
+                if (size > ns->size_max) ns->size_max = size;
+                if (pos < ns->pos_min) ns->pos_min = pos;
+                if (pos > ns->pos_max) ns->pos_max = pos;
+            }
+            ns->size_sum += size;
+            ns->sample_count++;
+
+            // Count spurious touches (below threshold)
+            uint16_t thresh = (ch == MUX_CH_THUMB) ? TRILL_MIN_TOUCH_SIZE_SQUARE : TRILL_MIN_TOUCH_SIZE_BAR;
+            if (size < thresh) {
+                ns->spurious_count++;
+            }
+        }
+#endif
     }
+
+#if TRILL_NOISE_STATS
+    // Output noise statistics periodically
+    if (++m_stats_interval >= NOISE_STATS_INTERVAL) {
+        m_stats_interval = 0;
+        SEGGER_RTT_printf(0, "NOISE_STATS:\n");
+        for (int ch = 0; ch < MUX_NUM_CHANNELS; ch++) {
+            noise_stats_t *ns = &m_noise_stats[ch];
+            if (ns->sample_count > 0) {
+                uint32_t size_avg = ns->size_sum / ns->sample_count;
+                SEGGER_RTT_printf(0, "  Ch%d: n=%lu size=[%u,%u,avg%lu] pos=[%u,%u] spurious=%u\n",
+                    ch, ns->sample_count, ns->size_min, ns->size_max, size_avg,
+                    ns->pos_min, ns->pos_max, ns->spurious_count);
+            }
+        }
+        // Reset stats for next interval
+        memset(m_noise_stats, 0, sizeof(m_noise_stats));
+    }
+#endif
 
 #if TRILL_DEBUG_RTT
     // Output sensor data for visualization: TRILL:ch,type,init,touches,data...
@@ -417,9 +579,89 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
     }
 #endif
 
+    // Send CDC touch stream if streaming is enabled
+    if (nchorder_cdc_is_streaming()) {
+        cdc_touch_frame_t frame = {0};
+        frame.sync = CDC_STREAM_SYNC;
+
+        // Thumb (Square sensor - 2D)
+        trill_sensor_t *thumb = &m_sensors[MUX_CH_THUMB];
+        if (thumb->initialized && thumb->num_touches > 0) {
+            if (thumb->is_2d) {
+                frame.thumb_x = thumb->touches_2d[0].x;
+                frame.thumb_y = thumb->touches_2d[0].y;
+                frame.thumb_size = thumb->touches_2d[0].size;
+            } else {
+                // Fallback if running as 1D (Flex mode)
+                frame.thumb_x = thumb->touches[0].position;
+                frame.thumb_y = 0;
+                frame.thumb_size = thumb->touches[0].size;
+            }
+        }
+
+        // Bar sensors (1D)
+        trill_sensor_t *bar_l = &m_sensors[MUX_CH_COL_L];
+        if (bar_l->initialized && bar_l->num_touches > 0) {
+            frame.bar0_pos = bar_l->touches[0].position;
+            frame.bar0_size = bar_l->touches[0].size;
+        }
+
+        trill_sensor_t *bar_m = &m_sensors[MUX_CH_COL_M];
+        if (bar_m->initialized && bar_m->num_touches > 0) {
+            frame.bar1_pos = bar_m->touches[0].position;
+            frame.bar1_size = bar_m->touches[0].size;
+        }
+
+        trill_sensor_t *bar_r = &m_sensors[MUX_CH_COL_R];
+        if (bar_r->initialized && bar_r->num_touches > 0) {
+            frame.bar2_pos = bar_r->touches[0].position;
+            frame.bar2_size = bar_r->touches[0].size;
+        }
+
+        // Current button state (or diagnostic every 100 frames)
+        static uint16_t diag_counter2 = 0;
+        if ((diag_counter2++ % 100) == 0) {
+            // Diagnostic frame: encode sensor status and scan results
+            // buttons: 0xF000 marker + init/touch flags
+            // bar positions: scan results (I2C addresses found)
+            uint16_t diag = 0xF000;  // Magic marker
+            diag |= (m_sensors[0].initialized ? 0x0001 : 0);
+            diag |= (m_sensors[1].initialized ? 0x0002 : 0);
+            diag |= (m_sensors[2].initialized ? 0x0004 : 0);
+            diag |= (m_sensors[3].initialized ? 0x0008 : 0);
+            diag |= (m_sensors[0].num_touches > 0 ? 0x0010 : 0);
+            diag |= (m_sensors[1].num_touches > 0 ? 0x0020 : 0);
+            diag |= (m_sensors[2].num_touches > 0 ? 0x0040 : 0);
+            diag |= (m_sensors[3].num_touches > 0 ? 0x0080 : 0);
+            diag |= (m_sensors[0].is_2d ? 0x0100 : 0);
+            frame.buttons = diag;
+
+            // Encode scan results in bar positions (repurpose for diagnostic)
+            // Format: bar0_pos = (ch0_addr << 8) | ch1_addr
+            //         bar1_pos = (ch2_addr << 8) | ch3_addr
+            frame.bar0_pos = ((uint16_t)m_scan_results[0] << 8) | m_scan_results[1];
+            frame.bar1_pos = ((uint16_t)m_scan_results[2] << 8) | m_scan_results[3];
+            frame.bar2_pos = 0xDEAD;  // Marker to identify diagnostic frame
+        } else {
+            frame.buttons = m_button_state;
+        }
+
+        nchorder_cdc_send_touch_frame(&frame);
+    }
+
     (void)any_touch;  // Suppress unused warning
 
-    // Process gesture on square sensor (slide vs tap detection)
+    // Settling period - ignore all touches while sensors stabilize after init
+    if (m_settling_polls > 0) {
+        m_settling_polls--;
+        if (m_settling_polls == 0) {
+            NRF_LOG_INFO("Trill buttons: Settling complete, accepting input");
+        }
+        return;  // Skip button detection during settling
+    }
+
+    // Process gesture on thumb sensor (slide vs tap detection)
+    // Works for both 2D (Square) and 1D (Flex) modes
     // Must be called BEFORE build_button_mask so m_gesture.is_mouse_mode is set
     if (m_sensors[MUX_CH_THUMB].initialized) {
         process_square_gesture(&m_sensors[MUX_CH_THUMB]);
@@ -468,6 +710,7 @@ uint32_t buttons_init(void)
     ret_code_t err_code;
     uint8_t dummy;
 
+    SEGGER_RTT_printf(0, "INIT:Trill buttons starting\n");
     NRF_LOG_INFO("Trill buttons: Initializing");
 
     // Initialize I2C bus
@@ -480,6 +723,16 @@ uint32_t buttons_init(void)
     // Reset mux
     nchorder_i2c_mux_reset();
 
+    // Hardware reset all Trill sensors via dedicated RESET pin
+    NRF_LOG_INFO("Trill buttons: Hardware reset via P0.07");
+    nrf_gpio_cfg_output(PIN_TRILL_RESET);
+    nrf_gpio_pin_set(PIN_TRILL_RESET);    // Start high (inactive)
+    simple_delay_ms(10);
+    nrf_gpio_pin_clear(PIN_TRILL_RESET);  // Pulse low (active)
+    simple_delay_ms(10);
+    nrf_gpio_pin_set(PIN_TRILL_RESET);    // Back to high
+    simple_delay_ms(500);                  // Wait for sensors to boot
+
     // Probe MUX directly at address 0x70 (before any channel selection)
     NRF_LOG_INFO("Trill buttons: Probing MUX at 0x%02X...", I2C_ADDR_MUX);
     err_code = nchorder_i2c_read(I2C_ADDR_MUX, &dummy, 1);
@@ -490,18 +743,55 @@ uint32_t buttons_init(void)
         NRF_LOG_INFO("Trill buttons: MUX responded (read 0x%02X)", dummy);
     }
 
-    // Initialize each Trill sensor
+    // Scan ALL mux channels for I2C devices
+    SEGGER_RTT_printf(0, "SCAN:Starting full I2C scan on all mux channels\n");
+    memset(m_scan_results, 0, sizeof(m_scan_results));
+    for (int scan_ch = 0; scan_ch < MUX_NUM_CHANNELS; scan_ch++) {
+        err_code = nchorder_i2c_mux_select(scan_ch);
+        if (err_code != NRF_SUCCESS) {
+            SEGGER_RTT_printf(0, "SCAN:Ch%d mux select FAILED\n", scan_ch);
+            continue;
+        }
+
+        SEGGER_RTT_printf(0, "SCAN:Ch%d ", scan_ch);
+        for (uint8_t addr = 0x20; addr <= 0x50; addr++) {
+            err_code = nchorder_i2c_read(addr, &dummy, 1);
+            if (err_code == NRF_SUCCESS) {
+                SEGGER_RTT_printf(0, "0x%02X ", addr);
+                if (m_scan_results[scan_ch] == 0) {
+                    m_scan_results[scan_ch] = addr;  // Store first found address
+                }
+            }
+        }
+        if (m_scan_results[scan_ch] == 0) {
+            SEGGER_RTT_printf(0, "NO_DEVICES");
+        }
+        SEGGER_RTT_printf(0, "\n");
+    }
+    SEGGER_RTT_printf(0, "SCAN:Complete ch0=0x%02X ch1=0x%02X ch2=0x%02X ch3=0x%02X\n",
+        m_scan_results[0], m_scan_results[1], m_scan_results[2], m_scan_results[3]);
+
+    // Initialize each Trill sensor using addresses found during scan
     for (int ch = 0; ch < MUX_NUM_CHANNELS; ch++) {
+        SEGGER_RTT_printf(0, "INIT:Ch%d starting\n", ch);
         NRF_LOG_INFO("Trill buttons: Initializing sensor on channel %d", ch);
+
+        // Skip if no device was found during scan
+        if (m_scan_results[ch] == 0) {
+            SEGGER_RTT_printf(0, "INIT:Ch%d SKIP - no device found in scan\n", ch);
+            continue;
+        }
 
         err_code = nchorder_i2c_mux_select(ch);
         if (err_code != NRF_SUCCESS) {
+            SEGGER_RTT_printf(0, "INIT:Ch%d mux_select FAIL 0x%04X\n", ch, err_code);
             NRF_LOG_ERROR("Trill buttons: Mux select ch%d failed: 0x%08X", ch, err_code);
             continue;
         }
 
-        // Trill Square (ch0) uses default address 0x28, Bars (ch1-3) use 0x20
-        uint8_t addr = (ch == MUX_CH_THUMB) ? TRILL_ADDR_SQUARE : I2C_ADDR_TRILL;
+        // Use the address found during scan
+        uint8_t addr = m_scan_results[ch];
+        SEGGER_RTT_printf(0, "INIT:Ch%d using scanned addr 0x%02X\n", ch, addr);
 
         // Initialize sensor inline to avoid function call overhead
         trill_sensor_t *sensor = &m_sensors[ch];
@@ -511,7 +801,17 @@ uint32_t buttons_init(void)
         memset(sensor, 0, sizeof(trill_sensor_t));
         sensor->i2c_addr = addr;
 
-        // First set read pointer to offset 0 (identify area)
+        // Step 1: Send IDENTIFY command (required before reading identification)
+        uint8_t identify_cmd[2] = {TRILL_OFFSET_COMMAND, TRILL_CMD_IDENTIFY};
+        err_code = nchorder_i2c_write(addr, identify_cmd, 2);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: IDENTIFY cmd failed: 0x%04X", ch, err_code);
+            continue;
+        }
+
+        simple_delay_ms(50);  // Wait for sensor to populate identification data
+
+        // Step 2: Set read pointer to offset 0
         uint8_t zero_offset = 0;
         err_code = nchorder_i2c_write(addr, &zero_offset, 1);
         if (err_code != NRF_SUCCESS) {
@@ -519,17 +819,26 @@ uint32_t buttons_init(void)
             continue;
         }
 
-        simple_delay_ms(2);  // Small delay after write
+        simple_delay_ms(5);
 
-        // Now read 4 bytes from offset 0
+        // Step 3: Read identification bytes
         err_code = nchorder_i2c_read(addr, identify_buf, 4);
         if (err_code != NRF_SUCCESS) {
             NRF_LOG_WARNING("Ch%d: Identify read failed: 0x%04X", ch, err_code);
             continue;
         }
 
-        NRF_LOG_INFO("Ch%d: Raw %02X %02X %02X %02X", ch,
+        NRF_LOG_INFO("Ch%d: IDENTIFY response %02X %02X %02X %02X", ch,
                      identify_buf[0], identify_buf[1], identify_buf[2], identify_buf[3]);
+
+        // Step 4: Reset sensor AFTER identification
+        NRF_LOG_INFO("Ch%d: Sending reset command", ch);
+        uint8_t reset_cmd[2] = {TRILL_OFFSET_COMMAND, TRILL_CMD_RESET};
+        err_code = nchorder_i2c_write(addr, reset_cmd, 2);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Reset failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(500);  // Wait for sensor to recover
 
         // Check for FE header - if not FE, try assuming Bar sensor anyway
         if (identify_buf[0] == 0xFE) {
@@ -544,18 +853,26 @@ uint32_t buttons_init(void)
             sensor->device_type = (ch == 0) ? TRILL_TYPE_SQUARE : TRILL_TYPE_BAR;
             sensor->firmware_version = 0;
         }
+
+        // Log actual detected type before any forcing
+        NRF_LOG_INFO("Ch%d: Detected as %s (type=%d, fw=%d)", ch,
+                     trill_type_name(sensor->device_type), sensor->device_type, sensor->firmware_version);
+
         sensor->is_2d = (sensor->device_type == TRILL_TYPE_SQUARE ||
                          sensor->device_type == TRILL_TYPE_HEX);
 
-        // Force channel 0 (Square) to be 2D regardless of identification
-        // The Square may return wrong device_type in identification response
+        // Channel 0 identifies as Flex (1D) - try treating it as 1D
+        // to see if the data parses correctly. Physical Square might be
+        // misconfigured or running different firmware.
         if (ch == MUX_CH_THUMB) {
-            sensor->device_type = TRILL_TYPE_SQUARE;
-            sensor->is_2d = true;
+            if (sensor->device_type == TRILL_TYPE_FLEX) {
+                NRF_LOG_WARNING("Ch%d: Keeping as 1D Flex (not forcing 2D)", ch);
+                sensor->is_2d = false;  // Use 1D parsing
+            }
         }
 
-        NRF_LOG_INFO("Ch%d: Trill %s (fw=%d)", ch,
-                     trill_type_name(sensor->device_type), sensor->firmware_version);
+        NRF_LOG_INFO("Ch%d: Using Trill %s mode", ch,
+                     trill_type_name(sensor->device_type));
 
         // Step 3: Set mode to CENTROID
         uint8_t mode_cmd[3] = {TRILL_OFFSET_COMMAND, TRILL_CMD_MODE, TRILL_MODE_CENTROID};
@@ -570,6 +887,28 @@ uint32_t buttons_init(void)
         err_code = nchorder_i2c_write(addr, scan_cmd, 4);
         if (err_code != NRF_SUCCESS) {
             NRF_LOG_WARNING("Ch%d: Scan settings failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(5);
+
+        // Step 4b: Set prescaler (1-8, higher = more sensitive but noisier)
+        // Square sensor: use 3 (moderate sensitivity)
+        // Bar sensors: use 3 (balanced sensitivity/noise)
+        uint8_t prescaler = 3;  // Same for all sensors
+        uint8_t prescaler_cmd[3] = {TRILL_OFFSET_COMMAND, TRILL_CMD_PRESCALER, prescaler};
+        err_code = nchorder_i2c_write(addr, prescaler_cmd, 3);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Prescaler failed: 0x%04X", ch, err_code);
+        }
+        simple_delay_ms(5);
+
+        // Step 4c: Set noise threshold (0-255, higher = less sensitive)
+        // Trill expects single byte. Default is ~40, max 255.
+        // Use same value for all sensors for consistent behavior
+        uint8_t noise_thresh = 100;  // Moderate filtering, same for all
+        uint8_t noise_cmd[3] = {TRILL_OFFSET_COMMAND, TRILL_CMD_NOISE_THRESHOLD, noise_thresh};
+        err_code = nchorder_i2c_write(addr, noise_cmd, 3);
+        if (err_code != NRF_SUCCESS) {
+            NRF_LOG_WARNING("Ch%d: Noise threshold failed: 0x%04X", ch, err_code);
         }
         simple_delay_ms(5);
 
@@ -633,7 +972,9 @@ uint32_t buttons_init(void)
     }
 
     m_initialized = true;
-    NRF_LOG_INFO("Trill buttons: Init complete, polling every %d ms", TRILL_POLL_INTERVAL_MS);
+    m_settling_polls = SETTLING_POLL_COUNT;  // Start settling period
+    NRF_LOG_INFO("Trill buttons: Init complete, polling every %d ms (settling for %d ms)",
+                 TRILL_POLL_INTERVAL_MS, SETTLING_POLL_COUNT * TRILL_POLL_INTERVAL_MS);
 
     return NRF_SUCCESS;
 }

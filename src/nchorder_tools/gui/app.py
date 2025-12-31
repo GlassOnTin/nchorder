@@ -258,6 +258,9 @@ class MainLayout(BoxLayout):
             # Load config
             self.config_panel.device = self.device
             self.config_panel.load_from_device()
+
+            # Auto-start streaming
+            self._start_stream()
         else:
             self.status_bar.status_text = "Connection failed"
 

@@ -20,10 +20,10 @@ from ..cdc_client import TouchFrame
 class TouchSquare(Widget):
     """Square sensor visualization (thumb area)"""
 
-    touch_x = NumericProperty(0)  # 0-3200
-    touch_y = NumericProperty(0)  # 0-3200
+    touch_x = NumericProperty(0)  # 0-1792
+    touch_y = NumericProperty(0)  # 0-1792
     touch_size = NumericProperty(0)
-    max_coord = NumericProperty(3200)
+    max_coord = NumericProperty(1800)  # Trill Square with prescaler 3
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -83,7 +83,7 @@ class TouchBar(Widget):
     touch_pos = NumericProperty(0)  # Position along bar
     touch_size = NumericProperty(0)  # Touch pressure
     bar_index = NumericProperty(0)  # 0, 1, or 2
-    max_pos = NumericProperty(3200)
+    max_pos = NumericProperty(3200)  # Trill Bar full range
 
     # Colors for each bar (left, middle, right)
     BAR_COLORS = [
@@ -243,9 +243,9 @@ class TouchVisualizer(Widget):
         """Update display with new touch data"""
         self.touch_frame = frame
 
-        # Square sensor
-        self.square.touch_x = frame.thumb_x
-        self.square.touch_y = frame.thumb_y
+        # Square sensor (swap X/Y - sensor reports them opposite to display)
+        self.square.touch_x = frame.thumb_y
+        self.square.touch_y = frame.thumb_x
         self.square.touch_size = frame.thumb_size
 
         # Bar sensors
