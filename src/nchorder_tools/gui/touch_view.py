@@ -243,9 +243,9 @@ class TouchVisualizer(Widget):
         """Update display with new touch data"""
         self.touch_frame = frame
 
-        # Square sensor (swap X/Y - sensor reports them opposite to display)
-        self.square.touch_x = frame.thumb_y
-        self.square.touch_y = frame.thumb_x
+        # Square sensor (firmware now maps Trill V→X, H→Y correctly)
+        self.square.touch_x = frame.thumb_x
+        self.square.touch_y = frame.thumb_y
         self.square.touch_size = frame.thumb_size
 
         # Bar sensors
