@@ -215,4 +215,4 @@ Likely candidates:
 
 ---
 
-[← Back to Index](README.md) | [Next: Config Format →](06-CONFIG_FORMAT.md)
+[← Back to Index](README.md) | [Next: Optical Sensor →](05-OPTICAL_SENSOR.md)
