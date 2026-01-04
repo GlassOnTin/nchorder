@@ -81,14 +81,18 @@ The PAW-A350 supports two communication modes:
 
 ### I2C Mode
 
-Standard I2C with 7-bit addressing. The default I2C address is not publicly documented but common PixArt sensors use addresses in the 0x39-0x75 range.
+Standard I2C with 7-bit addressing.
 
-**I2C scan result**: No devices found at 0x08-0x77
+**Discovered I2C address**: `0x57` (from [mbed reference implementation](https://os.mbed.com/teams/PixArt/code/ADBM-A350_referenceCode/))
 
-Possible reasons:
-- Sensor in deep sleep (needs wake sequence)
-- Wrong I2C address range
-- Sensor configured for SPI mode
+**I2C configuration** (per mbed guide):
+- With CS and MOSI pins HIGH: address is 0x57
+- SHUTDOWN pin (P0.29) controls sensor power - LOW = enabled
+
+**Current status**: No response at 0x57. Possible issues:
+- Sensor requires 1.8V power supply (thumb board may have regulator)
+- Specific initialization sequence needed
+- SHUTDOWN pin logic may be inverted
 
 ### 4-Wire SPI Mode
 
@@ -124,45 +128,51 @@ Based on similar PixArt sensors:
 
 ### What Works
 - Sensor physically identified as PAW-A350
-- FFC pinout partially mapped
-- Probe code written for I2C and SPI
+- FFC pinout mapped
+- Driver implemented with correct I2C address (0x57)
+- USB HID mouse class enabled for Twiddler4
 
 ### What Doesn't Work Yet
-- No response from sensor on any protocol
+- No response from sensor at I2C address 0x57
 - Unable to read Product ID register
 
 ### Next Steps
 
-1. **Obtain datasheet**: Contact PixArt or distributor for PAW-A350 documentation
-2. **Check power sequencing**: Sensor may need specific startup sequence
-3. **Logic analyzer capture**: Sniff original firmware communication
-4. **Try I2C wake sequence**: Some sensors need dummy write to wake from sleep
+1. **Logic analyzer capture**: Sniff original firmware's I2C communication
+2. **Check voltage levels**: Sensor may need 1.8V I/O (thumb board likely has level shifter)
+3. **Verify SHUTDOWN pin**: May need to pulse or use different polarity
+4. **Wake sequence**: Try dummy write or specific register sequence
 
-## Probe Code
+## Driver Implementation
 
-The firmware includes a PAW3204-style probe that can be adapted:
+The firmware includes a full optical sensor driver:
 
 ```c
-// firmware/src/paw3204_probe.c
-bool paw3204_probe(void);  // Tries I2C and SPI modes
+// Initialize and detect sensor
+bool nchorder_optical_init(void);
+
+// Read motion data (call in main loop)
+bool nchorder_optical_read_motion(optical_motion_t *motion);
+
+// Control sensor power
+void nchorder_optical_sleep(void);
+void nchorder_optical_wake(void);
 ```
 
-Current probe tests:
-- 2-wire serial (PAW3204 style)
-- 4-wire SPI Mode 0
-- 4-wire SPI Mode 3
-- P0.29 as enable (HIGH/LOW)
+Motion data is automatically sent to USB HID mouse when detected.
 
 ## References
 
 - [PixArt PAW-A350 Product Page](https://www.codico.com/en/en/current/news/paw-a350-optical-finger-navigation-chip-by-pixart)
-- [PixArt Optical Navigation Products](https://www.pixart.com/products/)
+- [mbed ADBM-A350 Reference Code](https://os.mbed.org/teams/PixArt/code/ADBM-A350_referenceCode/)
+- [ADBS-A350 Datasheet (DigiKey)](https://media.digikey.com/pdf/Data%20Sheets/Avago%20PDFs/ADBS-A350.pdf)
 
 ## Files
 
+- `firmware/include/nchorder_optical.h` - Optical sensor driver API
+- `firmware/src/nchorder_optical.c` - Driver implementation
 - `firmware/include/boards/board_twiddler4.h` - Pin definitions
-- `firmware/src/paw3204_probe.c` - Sensor probe code
-- `firmware/include/paw3204_probe.h` - Probe API
+- `firmware/src/nchorder_mouse.c` - USB HID mouse integration
 
 ---
 
