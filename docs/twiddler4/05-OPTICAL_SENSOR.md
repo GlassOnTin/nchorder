@@ -12,6 +12,10 @@ The sensor was identified via a label on the flex cable connector:
 
 **Label text**: `PAW-A350 N14001 YMB40001 @ENG`
 
+The same label is visible on the back of the sensor module:
+
+![PAW-A350 module back with label](../../photos/twiddler4/29_paw_a350_module_back_label.jpg)
+
 ### PixArt PAW-A350 Specifications
 
 | Parameter | Value |
@@ -39,6 +43,10 @@ The thumb board contains:
 - Thumb buttons (black domes)
 - FFC connector to main board
 
+![Thumb board back showing connectors](../../photos/twiddler4/35_thumb_board_back_j4_j5_j6.jpg)
+
+Back of the thumb board showing J4 (FFC to main board), J5 (sensor module), J6 (sensor flex cable), and L1/L2/L3 RGB LEDs.
+
 ### Sensor Module
 
 ![Sensor module front view](../../photos/twiddler4/26_sensor_module_front_lens_j6.jpg)
@@ -49,9 +57,27 @@ The sensor module sits in a raised housing with a lens aperture facing down towa
 
 The module connects via a small flex cable to connector J5 on the thumb PCB.
 
+![PAW-A350 module front showing lens](../../photos/twiddler4/30_paw_a350_module_front_lens.jpg)
+
+The front of the module shows the lens assembly and FPC flex cable with exposed traces.
+
+![PAW-A350 side view with LED wires](../../photos/twiddler4/31_paw_a350_side_view_led_wires.jpg)
+
+Side view showing the IR LED illumination (visible as magenta glow through the housing).
+
 ### FFC Connection
 
 ![FFC connector closeup](../../photos/twiddler4/24_ffc_connector_pins_closeup.jpg)
+
+![FPC connector pins closeup](../../photos/twiddler4/32_fpc_connector_pins_closeup.jpg)
+
+Closeup of the FPC connector showing the gold-plated contact pads.
+
+![FPC flex under microscope](../../photos/twiddler4/33_fpc_flex_microscope_traces.jpg)
+
+![FPC flex test pads](../../photos/twiddler4/34_fpc_flex_test_pads.jpg)
+
+Microscope views of the FPC flex cable showing trace routing and test pads.
 
 The 12-pin FFC cable (J6) connects the thumb board to the main PCB, carrying:
 - 4 thumb button GPIO lines
@@ -195,6 +221,12 @@ void nchorder_optical_wake(void);
 ```
 
 Motion data is automatically sent to USB HID mouse when detected.
+
+## Sensor Internals
+
+![PAW-A350 disassembly showing lens, die, and module](../../photos/twiddler4/36_paw_a350_disassembly_lens_die.jpg)
+
+Disassembly of the PAW-A350 module showing (left to right): lens assembly, sensor die with bond wires visible, and complete module with FPC attached.
 
 ## References
 
