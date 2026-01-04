@@ -85,36 +85,30 @@ Some pins are under the module and cannot be probed without desoldering.
 3. Probe E73 module edge pads until you get a beep
 4. Record the mapping
 
-### Results: Confirmed Mappings
+### Results: Partial Mappings (Pre-Desoldering)
 
-| Button | GPIO | E73 Pin | Location |
-|--------|------|---------|----------|
-| T1 (N) | P0.00 | 11 | Edge - accessible |
-| F1R | P0.01 | 13 | Edge - accessible |
-| F1M | P0.02 | 7 | Edge - accessible |
-| F1L | P0.03 | 3 | Edge - accessible |
-| F2R | P0.05 | 15 | Edge - accessible |
+| Button | GPIO | E73 Pin |
+|--------|------|---------|
+| T1 (N) | P0.00 | 11 |
+| F1R | P0.01 | 13 |
+| F1M | P0.02 | 7 |
+| F1L | P0.03 | 3 |
+| F2R | P0.05 | 15 |
 
-**Pattern observed**: Low-numbered P0 pins (0-5) are used for buttons with accessible pads.
+These 5 buttons were confirmed via edge-accessible pads.
 
-### The Previously Inaccessible Buttons
+### Full Mapping via Module Desoldering
 
-The remaining 11 buttons route to E73 pads underneath the module, inaccessible without desoldering.
+The remaining buttons route to E73 pads underneath the module. Hot-air desoldering exposed all 43 pads for continuity testing.
 
-**Method used to verify**:
-
-We hot-air desoldered the E73 module to expose all PCB traces:
-- Used hot air rework station at ~350°C
-- Applied flux to module edges
+**Method**:
+- Hot air rework station at ~350°C
+- Flux applied to module edges
 - Heated evenly until solder reflowed
 - Lifted module with tweezers
-- Performed continuity testing on all 16 button traces
-- All mappings confirmed to match the pattern-inferred values
+- Continuity testing on all button traces
 
-**Pattern confirmed**:
-- Finger rows follow descending pin order: L=high, M=mid, R=low (e.g., F1: P0.03, P0.02, P0.01)
-- Thumb buttons interleave between finger rows
-- Pins P0.11, P0.14, P0.16, P0.18, P0.19 reserved for USB/power
+See [Complete GPIO Summary](#complete-gpio-summary) for full mapping table.
 
 ## Step 3: Active Probing (Alternative Method)
 
@@ -157,60 +151,120 @@ nrf_gpio_cfg_input(PIN_NUMBER, NRF_GPIO_PIN_PULLUP);
 
 The firmware configures all 16 button pins this way during initialization.
 
-## Interrupt vs Polling
+## GPIO Reading Technique: Direct Register Polling
 
-The Twiddler uses GPIOTE (GPIO Tasks and Events) for interrupt-driven button detection:
+The nchorder firmware uses **direct GPIO register polling**, not GPIOTE interrupts:
 
-- **Polling**: Check button state in a loop (wastes CPU cycles)
-- **Interrupts**: CPU notified when state changes (efficient)
+```c
+// Read all 32 GPIO pins on port 0 in one register read
+uint32_t p0_in = NRF_P0->IN;
 
-GPIOTE allows configuring interrupts on rising edge, falling edge, or both.
+// Check specific button (active-low: bit=0 means pressed)
+if ((p0_in & (1 << PIN_NUMBER)) == 0) {
+    // Button is pressed
+}
+```
+
+**Why polling instead of GPIOTE?**
+- GPIOTE interrupts were found to be unreliable for button scanning
+- Polling is simple and deterministic
+- With 16+ buttons, polling a single 32-bit register is efficient
+- Button state can be captured as a complete snapshot (avoids race conditions)
+
+The polling loop runs at a fixed rate (typically every 1-10ms) and reads both `NRF_P0->IN` and `NRF_P1->IN` to capture all button states.
+
+**Register addresses**:
+- `NRF_P0->IN` (0x50000510): Port 0 input pins
+- `NRF_P1->IN` (0x50000810): Port 1 input pins
+
+**Alternative: GPIOTE (not used)**
+
+GPIOTE (GPIO Tasks and Events) provides interrupt-driven detection:
+- **Pros**: CPU notified when state changes (efficient when idle)
+- **Cons**: More complex, can miss rapid transitions, unreliable for button matrices
+
+GPIOTE remains available for wakeup from low-power sleep modes.
 
 ## Complete GPIO Summary
 
-**Update (Dec 2025)**: Complete 16-button GPIO mapping determined via:
-1. Hardware probing (5 pins confirmed)
-2. Pattern recognition (finger rows use descending pin order)
+**Update (Jan 2026)**: Complete button GPIO mapping determined by:
+1. Desoldering E73 module and continuity testing all 43 pads to PCB traces
+2. **Empirical GPIO testing** via bare-metal firmware (critical for F4 row!)
 
-**Key Finding**: All 16 buttons are on GPIO Port 0 (P0).
+### Critical Finding: E73 Module Routing Discrepancy
 
-### Complete Button-to-GPIO Mapping
+The E73-2G4M08S1C datasheet claims pins 38/40/42 are P1.02/P1.04/P1.06. However, **empirical testing proved these pins actually route to P0.15/P0.20/P0.17 on the nRF52840 die**. This was confirmed by:
+- Multimeter: F4 buttons physically connect to E73 pins 38/40/42
+- GPIO test firmware: Only P0.15/P0.20/P0.17 respond to F4 button presses
+- P1.02/P1.04/P1.06 never changed regardless of button state
 
-| Bit | Button | GPIO | E73 Pin |
-|-----|--------|------|---------|
-| 0 | T1 (N) | P0.00 | 33 |
-| 1 | F1L | P0.03 | 25 |
-| 2 | F1M | P0.02 | 29 |
-| 3 | F1R | P0.01 | 35 |
-| 4 | T2 (A) | P0.04 | 40 |
-| 5 | F2L | P0.07 | 22 |
-| 6 | F2M | P0.06 | 36 |
-| 7 | F2R | P0.05 | 37 |
-| 8 | T3 (E) | P0.08 | 38 |
-| 9 | F3L | P0.12 | 42 |
-| 10 | F3M | P0.10 | 64 |
-| 11 | F3R | P0.09 | 62 |
-| 12 | T4 (SP) | P0.13 | 54 |
-| 13 | F4L | P0.20 | 53 |
-| 14 | F4M | P0.17 | 51 |
-| 15 | F4R | P0.15 | 49 |
+**Lesson learned**: Always verify GPIO mappings empirically - datasheets can be wrong!
 
-All 16 GPIO mappings verified by continuity testing after hot-air desoldering the E73 module.
+### Button-to-GPIO Mapping (Fully Verified Jan 2026)
 
-### GPIO Pins Used
+| Button | E73 Pin | GPIO | Status | Notes |
+|--------|---------|------|--------|-------|
+| **Thumb Buttons** |
+| T0 | 8 | P0.29 | ✅ Verified | Extra thumb button (labeled as sensor in original) |
+| T1 (N) | 11 | P0.00 | ✅ Verified | Num modifier |
+| T2 (A) | 18 | P0.04 | ✅ Verified | Alt modifier |
+| T3 (E) | 16 | P0.08 | ✅ Verified | Ctrl/Enter modifier |
+| T4 (SP) | 33 | P0.13 | ✅ Verified | Shift/Space modifier |
+| **Finger Row 0 (Mouse)** |
+| F0L | 36 | P1.00 | ✅ Verified | |
+| F0M | 35 | P0.24 | ✅ Verified | |
+| F0R | 12 | P0.26 | ✅ Verified | |
+| **Finger Row 1 (Index)** |
+| F1L | 3 | P0.03 | ✅ Verified | |
+| F1M | 7 | P0.02 | ✅ Verified | |
+| F1R | 13 | P0.01 | ✅ Verified | |
+| **Finger Row 2 (Middle)** |
+| F2L | 22 | P0.07 | ✅ Verified | |
+| F2M | 14 | P0.06 | ✅ Verified | |
+| F2R | 15 | P0.05 | ✅ Verified | |
+| **Finger Row 3 (Ring)** |
+| F3L | 20 | P0.12 | ✅ Verified | |
+| F3M | 43 | P0.10 | ✅ Verified | NFC2 - requires UICR.NFCPINS=0xFFFFFFFE |
+| F3R | 41 | P0.09 | ✅ Verified | NFC1 - requires UICR.NFCPINS=0xFFFFFFFE |
+| **Finger Row 4 (Pinky)** |
+| F4L | 38 | **P0.15** | ✅ Verified | ⚠️ Datasheet says P1.02 - WRONG! |
+| F4M | 40 | **P0.20** | ✅ Verified | ⚠️ Datasheet says P1.04 - WRONG! |
+| F4R | 42 | **P0.17** | ✅ Verified | ⚠️ Datasheet says P1.06 - WRONG! |
 
-All 16 button pins: `P0.00, P0.01, P0.02, P0.03, P0.04, P0.05, P0.06, P0.07, P0.08, P0.09, P0.10, P0.12, P0.13, P0.15, P0.17, P0.20`
+### Expansion GPIOs (J3 Header)
 
-Pins NOT used for buttons: `P0.11, P0.14, P0.16, P0.18, P0.19` (reserved for USB, QSPI, etc.)
+The J3 header exposes two spare GPIOs that can be used for additional buttons or other purposes:
 
-### Pattern Observed
+| Name | E73 Pin | GPIO | J3 Pin | Notes |
+|------|---------|------|--------|-------|
+| EXT1 | 4 | P0.28 | 5 | Can bodge to broken F0L |
+| EXT2 | 17 | P1.09 | 6 | Spare expansion |
 
-1. **Thumb buttons** use pins at group boundaries: P0.00, P0.04, P0.08, P0.13
-2. **Finger rows** use 3 consecutive pins in **descending** order (L=high, M=mid, R=low):
-   - Row 1: P0.03, P0.02, P0.01
-   - Row 2: P0.07, P0.06, P0.05
-   - Row 3: P0.12, P0.10, P0.09 (skips P0.11)
-   - Row 4: P0.20, P0.17, P0.15 (skips several)
+These are active-low with internal pull-ups, matching the standard button configuration.
+
+### GPIO Summary by Port
+
+**Port 0 (19 buttons)**:
+- Thumb: P0.00 (T1), P0.04 (T2), P0.08 (T3), P0.13 (T4), P0.29 (T0)
+- F0 row: P0.24 (F0M), P0.26 (F0R)
+- F1 row: P0.01, P0.02, P0.03
+- F2 row: P0.05, P0.06, P0.07
+- F3 row: P0.09, P0.10, P0.12
+- F4 row: P0.15, P0.17, P0.20
+- Expansion: P0.28 (EXT1)
+
+**Port 1 (2 GPIOs)**:
+- P1.00 (F0L)
+- P1.09 (EXT2) - Expansion
+
+### Other GPIO Usage
+
+| Function | E73 Pin | GPIO | Notes |
+|----------|---------|------|-------|
+| LED Power Enable | 2 | P1.10 | Controls Q1 transistor for LED strip power |
+| LED Data | 6 | P1.13 | RGB LED data line (see [04-LED_CONTROL.md](04-LED_CONTROL.md)) |
+| I2C SDA | - | P0.30 | J3 header, optical sensor |
+| I2C SCL | - | P0.31 | J3 header, optical sensor |
 
 ## Key Lessons
 
@@ -242,4 +296,4 @@ Most-used buttons are in the F1 and F2 rows - the easiest to reach.
 
 ---
 
-[← Back to Index](README.md) | [Next: I2C Analysis →](04-I2C_ANALYSIS.md)
+[← Back to Index](README.md) | [Next: Config Format →](06-CONFIG_FORMAT.md)

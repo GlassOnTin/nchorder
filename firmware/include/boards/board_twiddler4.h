@@ -34,8 +34,8 @@
 #define PIN_BTN_T3      NRF_GPIO_PIN_MAP(0, 8)   // P0.08 (E73 pin 16)
 #define PIN_BTN_T4      NRF_GPIO_PIN_MAP(0, 13)  // P0.13 (E73 pin 33)
 
-// Finger Row 0 (traced but may not be used in standard layout)
-#define PIN_BTN_F0L     NRF_GPIO_PIN_MAP(0, 22)  // P0.22 - DISABLED (P1.00 has hardware issue, button non-functional)
+// Finger Row 0 (mouse buttons)
+#define PIN_BTN_F0L     NRF_GPIO_PIN_MAP(1, 0)   // P1.00 (E73 pin 36)
 #define PIN_BTN_F0M     NRF_GPIO_PIN_MAP(0, 24)  // P0.24 (E73 pin 35)
 #define PIN_BTN_F0R     NRF_GPIO_PIN_MAP(0, 26)  // P0.26 (E73 pin 12)
 
