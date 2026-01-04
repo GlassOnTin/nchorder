@@ -9,10 +9,18 @@ MEMORY
   /* Original: LENGTH = 0xd9000 (went to 0x100000, would overwrite bootloader) */
   FLASH (rx) : ORIGIN = 0x27000, LENGTH = 0xc9000
   RAM (rwx) :  ORIGIN = 0x20003000, LENGTH = 0x3d000
+  /* UICR region for configuration (NFCPINS at 0x1000120C) */
+  UICR (r) :   ORIGIN = 0x10001200, LENGTH = 0x100
 }
 
 SECTIONS
 {
+  /* UICR NFCPINS register at 0x1000120C - set to 0xFFFFFFFE to disable NFC */
+  /* This allows P0.09/P0.10 to be used as GPIO for F3R/F3M buttons */
+  .uicr_nfcpins 0x1000120C :
+  {
+    KEEP(*(.uicr_nfcpins))
+  } > UICR
 }
 
 SECTIONS

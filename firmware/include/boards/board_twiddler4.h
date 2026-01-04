@@ -35,7 +35,8 @@
 #define PIN_BTN_T4      NRF_GPIO_PIN_MAP(0, 13)  // P0.13 (E73 pin 33)
 
 // Finger Row 0 (mouse buttons)
-#define PIN_BTN_F0L     NRF_GPIO_PIN_MAP(1, 0)   // P1.00 (E73 pin 36)
+// NOTE: E73 pin 36 routes to P0.22 internally, not P1.00 as datasheet claims!
+#define PIN_BTN_F0L     NRF_GPIO_PIN_MAP(0, 22)  // P0.22 (E73 pin 36 - empirically verified!)
 #define PIN_BTN_F0M     NRF_GPIO_PIN_MAP(0, 24)  // P0.24 (E73 pin 35)
 #define PIN_BTN_F0R     NRF_GPIO_PIN_MAP(0, 26)  // P0.26 (E73 pin 12)
 

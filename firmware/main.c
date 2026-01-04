@@ -105,6 +105,19 @@
 #include "nchorder_optical.h"
 #include "nchorder_mouse.h"
 
+// ============================================================================
+// UICR Configuration (placed in flash at 0x10001000)
+// ============================================================================
+// This ensures UICR settings are included in the hex file and survive chip erase
+// when programmed with the application.
+//
+// NFCPINS: 0xFFFFFFFE = Disable NFC, use P0.09/P0.10 as GPIO (for F3R/F3M buttons)
+// Note: UICR can only be written when erased (all 0xFF), so we set unused fields to 0xFF
+#if defined(BOARD_TWIDDLER4)
+__attribute__((section(".uicr_nfcpins"))) __attribute__((used))
+const uint32_t uicr_nfcpins = 0xFFFFFFFE;
+#endif
+
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
 static void simple_delay_ms(uint32_t ms)
 {
@@ -236,7 +249,7 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
 #ifdef SVCALL_AS_NORMAL_FUNCTION
 #define SCHED_QUEUE_SIZE                    20                                         /**< Maximum number of events in the scheduler queue. More is needed in case of Serialization. */
 #else
-#define SCHED_QUEUE_SIZE                    10                                         /**< Maximum number of events in the scheduler queue. */
+#define SCHED_QUEUE_SIZE                    32                                         /**< Maximum number of events in the scheduler queue. */
 #endif
 
 #define MODIFIER_KEY_POS                    0                                          /**< Position of the modifier byte in the Input Report. */
@@ -2349,14 +2362,23 @@ int main(void)
     NRF_QSPI->PSEL.SCK = 0xFFFFFFFF;
     NRF_QSPI->PSEL.CSN = 0xFFFFFFFF;
 
+    // Disable SWO trace to release P1.00 for F0L button
+    // J-Link enables trace which claims P1.00 for Serial Wire Output
+    // Must disable: TPIU, ITM, TRCENA, AND TRACECONFIG to fully release the pin
+    TPI->SPPR = 0;                                    // Disable TPIU SWO output
+    TPI->FFCR = 0;                                    // Disable formatter
+    ITM->TCR = 0;                                     // Disable ITM
+    CoreDebug->DEMCR &= ~CoreDebug_DEMCR_TRCENA_Msk; // Disable trace enable
+    NRF_CLOCK->TRACECONFIG = 0;                       // TRACEMUX=0: Release P1.00-P1.04 to GPIO
+
     // Initialize logging first
     log_init();
 
+    scheduler_init();  // Must be before timers_init when APP_TIMER_CONFIG_USE_SCHEDULER=1
     timers_init();
     buttons_leds_init(&erase_bonds);
     power_management_init();
     ble_stack_init();
-    scheduler_init();
     gap_params_init();
     gatt_init();
     advertising_init();
@@ -2369,7 +2391,7 @@ int main(void)
 
     nchorder_led_init();    // Initialize RGB LED driver
 
-#if defined(BOARD_TWIDDLER4)
+#if defined(BOARD_TWIDDLER4) && 0  // DISABLED: optical sensor I2C not responding
     // Twiddler 4: Initialize optical thumb sensor (PAW-A350)
     if (nchorder_optical_init()) {
         NRF_LOG_INFO("Optical sensor ready, ID=0x%02X", nchorder_optical_get_product_id());
@@ -2431,13 +2453,14 @@ int main(void)
         nchorder_usb_check_disconnect();  // Check for deferred activation
 #endif
 
-#if defined(BOARD_TWIDDLER4)
+#if defined(BOARD_TWIDDLER4) && 0  // DISABLED: optical sensor I2C not responding
         // Poll optical sensor and send mouse movement
         if (nchorder_optical_is_ready() && nchorder_mouse_is_ready()) {
             optical_motion_t motion;
             if (nchorder_optical_read_motion(&motion) && motion.motion) {
                 // Send relative mouse movement via USB HID
-                nchorder_mouse_move(motion.dx, motion.dy);
+                // Axes swapped to match physical sensor orientation on thumb board
+                nchorder_mouse_move(motion.dy, motion.dx);
             }
         }
 #endif
