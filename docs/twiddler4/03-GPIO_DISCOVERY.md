@@ -193,10 +193,16 @@ GPIOTE remains available for wakeup from low-power sleep modes.
 
 ### Critical Finding: E73 Module Routing Discrepancy
 
-The E73-2G4M08S1C datasheet claims pins 38/40/42 are P1.02/P1.04/P1.06. However, **empirical testing proved these pins actually route to P0.15/P0.20/P0.17 on the nRF52840 die**. This was confirmed by:
-- Multimeter: F4 buttons physically connect to E73 pins 38/40/42
-- GPIO test firmware: Only P0.15/P0.20/P0.17 respond to F4 button presses
-- P1.02/P1.04/P1.06 never changed regardless of button state
+The E73-2G4M08S1C datasheet has multiple incorrect pin mappings:
+- Pin 36 claimed to be P1.00, **actually routes to P0.22** (F0L button)
+- Pin 38 claimed to be P1.02, **actually routes to P0.15** (F4L button)
+- Pin 40 claimed to be P1.04, **actually routes to P0.20** (F4M button)
+- Pin 42 claimed to be P1.06, **actually routes to P0.17** (F4R button)
+
+This was confirmed by:
+- Multimeter: Buttons physically connect to E73 pins 36/38/40/42
+- GPIO test firmware: Only P0.22/P0.15/P0.20/P0.17 respond to button presses
+- P1.00/P1.02/P1.04/P1.06 never changed regardless of button state
 
 **Lesson learned**: Always verify GPIO mappings empirically - datasheets can be wrong!
 
@@ -211,7 +217,7 @@ The E73-2G4M08S1C datasheet claims pins 38/40/42 are P1.02/P1.04/P1.06. However,
 | T3 (E) | 16 | P0.08 | ✅ Verified | Ctrl/Enter modifier |
 | T4 (SP) | 33 | P0.13 | ✅ Verified | Shift/Space modifier |
 | **Finger Row 0 (Mouse)** |
-| F0L | 36 | P1.00 | ✅ Verified | |
+| F0L | 36 | **P0.22** | ✅ Verified | ⚠️ Datasheet says P1.00 - WRONG! |
 | F0M | 35 | P0.24 | ✅ Verified | |
 | F0R | 12 | P0.26 | ✅ Verified | |
 | **Finger Row 1 (Index)** |
@@ -244,17 +250,16 @@ These are active-low with internal pull-ups, matching the standard button config
 
 ### GPIO Summary by Port
 
-**Port 0 (19 buttons)**:
+**Port 0 (21 GPIOs)**:
 - Thumb: P0.00 (T1), P0.04 (T2), P0.08 (T3), P0.13 (T4), P0.29 (T0)
-- F0 row: P0.24 (F0M), P0.26 (F0R)
+- F0 row: P0.22 (F0L), P0.24 (F0M), P0.26 (F0R)
 - F1 row: P0.01, P0.02, P0.03
 - F2 row: P0.05, P0.06, P0.07
 - F3 row: P0.09, P0.10, P0.12
 - F4 row: P0.15, P0.17, P0.20
 - Expansion: P0.28 (EXT1)
 
-**Port 1 (2 GPIOs)**:
-- P1.00 (F0L)
+**Port 1 (1 GPIO)**:
 - P1.09 (EXT2) - Expansion
 
 ### Other GPIO Usage
