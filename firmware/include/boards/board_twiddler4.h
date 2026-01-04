@@ -75,11 +75,21 @@
 }
 
 // ============================================================================
-// I2C BUS (TWI0) - Optical sensor and LEDs
+// I2C BUS (TWI0) - General purpose I2C on J3 header
 // ============================================================================
 #define PIN_I2C_SDA       NRF_GPIO_PIN_MAP(0, 30)  // J3 pin 3
 #define PIN_I2C_SCL       NRF_GPIO_PIN_MAP(0, 31)  // J3 pin 2
-#define TOUCHPAD_I2C_ADDR 0x74                     // Optical sensor (unidentified)
+
+// ============================================================================
+// OPTICAL THUMB SENSOR - SPI interface (FFC J6 to thumb board)
+// ============================================================================
+// I2C scan found no devices - likely SPI protocol
+// Pinout via FFC: P0.29 (CS?), P0.30 (MOSI?), P0.31 (SCK?), P1.11 (MISO?)
+// TODO: Identify sensor chip and implement driver
+#define PIN_SENSOR_CS     NRF_GPIO_PIN_MAP(0, 29)  // E73 pin 8 - chip select (unverified)
+#define PIN_SENSOR_CLK    NRF_GPIO_PIN_MAP(0, 31)  // E73 pin 9 - SPI clock (unverified)
+#define PIN_SENSOR_MOSI   NRF_GPIO_PIN_MAP(0, 30)  // E73 pin 10 - data out (unverified)
+#define PIN_SENSOR_MISO   NRF_GPIO_PIN_MAP(1, 11)  // Via FFC - data in (unverified)
 
 // ============================================================================
 // LED PINS - WS2812/SK6812 addressable RGB strip (3 LEDs)

@@ -101,6 +101,8 @@
 #include "nchorder_usb.h"
 #include "nchorder_led.h"
 #include "nchorder_flash.h"
+#include "nchorder_i2c.h"
+#include "paw3204_probe.h"
 #include "raw_i2c_test.h"
 
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
@@ -2367,6 +2369,12 @@ int main(void)
 
     nchorder_led_init();    // Initialize RGB LED driver
 
+#if defined(BOARD_TWIDDLER4)
+    // Twiddler 4: Probe for optical thumb sensor (PAW3204)
+    paw3204_probe();
+    NRF_LOG_FLUSH();
+#endif
+
     // Test all 3 LEDs: L1=Red, L2=Green, L3=Blue
     nchorder_led_set(0, LED_COLOR_RED);
     nchorder_led_set(1, LED_COLOR_GREEN);
@@ -2406,10 +2414,6 @@ int main(void)
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 14));     // LED2 OFF
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 15));     // LED3 OFF
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 16));     // LED4 OFF
-#elif defined(BOARD_TWIDDLER4)
-    // Twiddler 4: WS2812B/SK6812 addressable LEDs on thumb board
-    // These use I2S protocol via FFC cable - not yet implemented
-    // TODO: Implement WS2812 driver using I2S or bitbang on PIN_LED_DATA
 #endif
 
     // Enter main loop.

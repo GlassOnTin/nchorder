@@ -1,15 +1,21 @@
 # Northern Chorder Firmware Makefile
 # Based on Nordic SDK 17.1.0 ble_app_hids_keyboard example
 #
-# Build: make              (default: xiao)
-#        make BOARD=xiao   (XIAO nRF52840 with Trill sensors)
-#        make BOARD=dk     (nRF52840-DK for testing)
-#        make BOARD=twiddler4 (Twiddler 4 hardware)
+# Build: make BOARD=<target>
+#        make BOARD=twiddler4 (Twiddler 4 hardware - GPIO buttons)
+#        make BOARD=xiao      (XIAO nRF52840 with Trill sensors)
+#        make BOARD=dk        (nRF52840-DK for testing)
 # Clean: make clean
 # Flash: make flash (requires nrfjprog)
 
-# Board selection (twiddler4, xiao, dk)
-BOARD ?= xiao
+# Board selection - REQUIRED for build targets, not for clean/help
+ifndef BOARD
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(MAKECMDGOALS),help)
+$(error BOARD not specified. Use: make BOARD=twiddler4|xiao|dk)
+endif
+endif
+endif
 
 PROJECT_NAME     := nchorder_custom
 TARGETS          := nrf52840_xxaa
@@ -84,6 +90,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/mouse/app_usbd_hid_mouse.c \
   $(SDK_ROOT)/components/libraries/usbd/class/cdc/acm/app_usbd_cdc_acm.c \
   $(PROJ_DIR)/src/nchorder_cdc.c \
+  $(PROJ_DIR)/src/nchorder_flash.c \
   $(PROJ_DIR)/src/nchorder_mouse.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_Syscalls_GCC.c \
@@ -138,12 +145,15 @@ ifeq ($(BOARD),xiao)
   SRC_FILES += \
     $(PROJ_DIR)/src/nchorder_led_gpio.c \
     $(PROJ_DIR)/src/nchorder_i2c.c \
+    $(PROJ_DIR)/src/raw_i2c_test.c \
     $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
 else
-  # Twiddler4/DK: WS2812B LEDs via I2S
+  # Twiddler4/DK: RGB LEDs (bit-bang), I2C, and optical sensor probe
   SRC_FILES += \
     $(PROJ_DIR)/src/nchorder_led.c \
-    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_i2s.c
+    $(PROJ_DIR)/src/nchorder_i2c.c \
+    $(PROJ_DIR)/src/paw3204_probe.c \
+    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
 endif
 
 # Include folders

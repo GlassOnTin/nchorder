@@ -87,8 +87,11 @@ ret_code_t nchorder_i2c_init(void)
     }
 
     // Configure MUX reset pin as output, initially high (not reset)
-    nrf_gpio_cfg_output(PIN_MUX_RESET);
-    nrf_gpio_pin_set(PIN_MUX_RESET);
+    // Skip if PIN_MUX_RESET is 0xFF (not connected on Twiddler4)
+    if (PIN_MUX_RESET != 0xFF) {
+        nrf_gpio_cfg_output(PIN_MUX_RESET);
+        nrf_gpio_pin_set(PIN_MUX_RESET);
+    }
 
     // Configure TWIM
     nrfx_twim_config_t config = {
@@ -244,6 +247,11 @@ ret_code_t nchorder_i2c_mux_select(uint8_t channel)
 
 void nchorder_i2c_mux_reset(void)
 {
+    // Skip if no MUX present (Twiddler4)
+    if (PIN_MUX_RESET == 0xFF) {
+        return;
+    }
+
     NRF_LOG_INFO("Resetting I2C mux");
 
     // Pulse reset low for at least 6ns (datasheet minimum)
