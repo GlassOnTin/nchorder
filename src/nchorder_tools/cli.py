@@ -9,6 +9,7 @@ from pathlib import Path
 from .formats import read_config, detect_version, ConfigV7
 from .csv_parser import read_csv
 from .hid import chord_to_buttons, hid_to_char, chord_to_tutor_notation, hid_to_tutor_key, BUTTON_BITS
+from .cdc_client import NChorderDevice
 
 
 def check_firmware_quirks(config):
@@ -384,6 +385,112 @@ def cmd_diff(args):
     return 0
 
 
+def get_layouts_dir() -> Path:
+    """Get the configs directory containing layout files."""
+    # Check relative to this module
+    module_dir = Path(__file__).parent.parent.parent
+    configs_dir = module_dir / 'configs'
+    if configs_dir.exists():
+        return configs_dir
+    # Fallback to current directory
+    return Path('configs')
+
+
+def cmd_layouts(args):
+    """List available chord layouts."""
+    configs_dir = get_layouts_dir()
+
+    if not configs_dir.exists():
+        print(f"Configs directory not found: {configs_dir}", file=sys.stderr)
+        return 1
+
+    layouts = []
+    for cfg_file in sorted(configs_dir.glob('*.cfg')):
+        try:
+            config = read_config(cfg_file)
+            layouts.append((cfg_file.stem, len(config.chords), cfg_file))
+        except Exception as e:
+            layouts.append((cfg_file.stem, -1, cfg_file))
+
+    if not layouts:
+        print("No layout files found.")
+        return 0
+
+    print("Available layouts:")
+    print()
+    for name, chord_count, path in layouts:
+        if chord_count >= 0:
+            print(f"  {name:20s}  {chord_count:3d} chords  ({path})")
+        else:
+            print(f"  {name:20s}  (error reading file)")
+
+    return 0
+
+
+def cmd_upload(args):
+    """Upload a chord layout to the connected device."""
+    # Resolve layout name to file path
+    config_path = args.file
+    if not config_path.exists():
+        # Try looking in configs directory
+        configs_dir = get_layouts_dir()
+        alt_path = configs_dir / f"{args.file}.cfg"
+        if alt_path.exists():
+            config_path = alt_path
+        else:
+            alt_path = configs_dir / args.file
+            if alt_path.exists():
+                config_path = alt_path
+            else:
+                print(f"Layout not found: {args.file}", file=sys.stderr)
+                print(f"Use 'layouts' command to see available layouts.", file=sys.stderr)
+                return 1
+
+    # Read and validate config
+    try:
+        config = read_config(config_path)
+        print(f"Layout: {config_path.stem} ({len(config.chords)} chords)")
+    except Exception as e:
+        print(f"Error reading config: {e}", file=sys.stderr)
+        return 1
+
+    # Check for quirks
+    quirks = check_firmware_quirks(config)
+    if quirks:
+        print("Warnings:")
+        for q in quirks:
+            print(f"  {q[:70]}...")
+
+    # Find device
+    if args.port:
+        port = args.port
+    else:
+        devices = NChorderDevice.find_devices()
+        if not devices:
+            print("No device found. Connect device or specify --port.", file=sys.stderr)
+            return 1
+        port = devices[0]
+        print(f"Device: {port}")
+
+    # Connect and upload
+    device = NChorderDevice(port)
+    if not device.connect():
+        print(f"Failed to connect to {port}", file=sys.stderr)
+        return 1
+
+    try:
+        print("Uploading...", end=' ', flush=True)
+        if device.upload_config_file(str(config_path)):
+            print("OK")
+            print(f"Layout '{config_path.stem}' is now active.")
+            return 0
+        else:
+            print("FAILED")
+            return 1
+    finally:
+        device.disconnect()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Twiddler configuration tools',
@@ -431,6 +538,16 @@ def main():
     diff_parser.add_argument('file1', type=Path, help='First config file')
     diff_parser.add_argument('file2', type=Path, help='Second config file')
 
+    # layouts command
+    layouts_parser = subparsers.add_parser('layouts', help='List available chord layouts')
+
+    # upload command
+    upload_parser = subparsers.add_parser('upload', help='Upload a chord layout to device')
+    upload_parser.add_argument('file', type=Path,
+                              help='Layout file or name (e.g., mirrorwalk or mirrorwalk.cfg)')
+    upload_parser.add_argument('-p', '--port', type=str,
+                              help='Serial port (auto-detect if not specified)')
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -449,6 +566,10 @@ def main():
         return cmd_analyze(args)
     elif args.command == 'diff':
         return cmd_diff(args)
+    elif args.command == 'layouts':
+        return cmd_layouts(args)
+    elif args.command == 'upload':
+        return cmd_upload(args)
 
     return 0
 
