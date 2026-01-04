@@ -4,10 +4,15 @@
  * PixArt PAW-A350 optical finger navigation sensor.
  * Compatible with AVAGO ADBS-A350/ADBM-A350.
  *
+ * Uses I2C protocol (verified working):
+ * - P0.30 = SCL (clock)
+ * - P0.31 = SDA (data)
+ * - P1.11 = SHUTDOWN (LOW = enabled)
+ * - I2C address: 0x33
+ *
  * Key specs:
- * - I2C address: 0x57 (7-bit)
  * - Resolution: 125-1250 CPI
- * - 1.8V or 2.8V operation
+ * - 1.8V core, 3.3V I/O (on Twiddler 4)
  */
 
 #ifndef NCHORDER_OPTICAL_H
@@ -15,9 +20,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
-// I2C address (7-bit, with IO_SEL and CS/MOSI pins HIGH)
-#define OPTICAL_I2C_ADDR            0x57
 
 // Register map (based on ADBM-A350 datasheet)
 #define OPTICAL_REG_PRODUCT_ID      0x00    // Product ID (read-only)
@@ -38,8 +40,16 @@
 #define MOTION_BIT_MOT              0x80    // Motion detected since last read
 #define MOTION_BIT_OVF              0x10    // Motion overflow
 
-// Expected Product ID (may vary by revision)
-#define OPTICAL_PRODUCT_ID_A350     0x0D    // PixArt PAW-A350 / AVAGO ADBS-A350
+// Expected Product ID (from mbed reference code)
+#define OPTICAL_PRODUCT_ID_A350     0x88    // PixArt PAW-A350 / ADBM-A350
+
+// Soft reset register
+#define OPTICAL_REG_SOFT_RESET      0x3A    // Write 0x5A to soft reset
+#define OPTICAL_SOFT_RESET_CMD      0x5A
+
+// OFN Engine configuration
+#define OPTICAL_REG_OFN_ENGINE      0xC9    // OFN engine settings
+#define OPTICAL_OFN_ENGINE_INIT     0x61    // Default init value
 
 /**
  * Motion data structure
