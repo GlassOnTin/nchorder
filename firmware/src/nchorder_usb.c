@@ -191,7 +191,8 @@ uint32_t nchorder_usb_init(void)
         return ret;
     }
 
-    // Initialize HID mouse class for square sensor control
+#if defined(BUTTON_DRIVER_TRILL) || defined(BOARD_TWIDDLER4)
+    // Initialize HID mouse class for square sensor or optical sensor control
     ret = nchorder_mouse_init();
     if (ret != NRF_SUCCESS)
     {
@@ -206,6 +207,7 @@ uint32_t nchorder_usb_init(void)
         NRF_LOG_WARNING("USB: CDC init failed: %d (continuing without CDC)", ret);
         // Don't fail - HID still works
     }
+#endif
 
     NRF_LOG_INFO("USB: Init complete (call nchorder_usb_start after adding all classes)");
     return NRF_SUCCESS;
@@ -213,10 +215,10 @@ uint32_t nchorder_usb_init(void)
 
 uint32_t nchorder_usb_start(void)
 {
-#if defined(BOARD_XIAO_NRF52840)
-    // XIAO: Skip power events (crashes with SoftDevice), manually start USB
-    // USB is always connected when XIAO is plugged in
-    NRF_LOG_INFO("USB: Manual start (XIAO, no power detection)");
+#if defined(BOARD_XIAO_NRF52840) || defined(BOARD_TWIDDLER4)
+    // XIAO/Twiddler4: Skip power events (crashes with SoftDevice), manually start USB
+    // USB is always connected when device is plugged in
+    NRF_LOG_INFO("USB: Manual start (no power detection)");
     app_usbd_enable();
     app_usbd_start();
 

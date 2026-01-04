@@ -148,11 +148,11 @@ ifeq ($(BOARD),xiao)
     $(PROJ_DIR)/src/raw_i2c_test.c \
     $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
 else
-  # Twiddler4/DK: RGB LEDs (bit-bang), I2C, and optical sensor probe
+  # Twiddler4/DK: RGB LEDs (bit-bang), I2C, and optical sensor
   SRC_FILES += \
     $(PROJ_DIR)/src/nchorder_led.c \
     $(PROJ_DIR)/src/nchorder_i2c.c \
-    $(PROJ_DIR)/src/paw3204_probe.c \
+    $(PROJ_DIR)/src/nchorder_optical.c \
     $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
 endif
 

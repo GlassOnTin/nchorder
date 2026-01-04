@@ -102,8 +102,8 @@
 #include "nchorder_led.h"
 #include "nchorder_flash.h"
 #include "nchorder_i2c.h"
-#include "paw3204_probe.h"
-#include "raw_i2c_test.h"
+#include "nchorder_optical.h"
+#include "nchorder_mouse.h"
 
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
 static void simple_delay_ms(uint32_t ms)
@@ -2370,8 +2370,12 @@ int main(void)
     nchorder_led_init();    // Initialize RGB LED driver
 
 #if defined(BOARD_TWIDDLER4)
-    // Twiddler 4: Probe for optical thumb sensor (PAW3204)
-    paw3204_probe();
+    // Twiddler 4: Initialize optical thumb sensor (PAW-A350)
+    if (nchorder_optical_init()) {
+        NRF_LOG_INFO("Optical sensor ready, ID=0x%02X", nchorder_optical_get_product_id());
+    } else {
+        NRF_LOG_WARNING("Optical sensor not detected");
+    }
     NRF_LOG_FLUSH();
 #endif
 
@@ -2425,6 +2429,17 @@ int main(void)
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
         nchorder_usb_process();  // Process USB events
         nchorder_usb_check_disconnect();  // Check for deferred activation
+#endif
+
+#if defined(BOARD_TWIDDLER4)
+        // Poll optical sensor and send mouse movement
+        if (nchorder_optical_is_ready() && nchorder_mouse_is_ready()) {
+            optical_motion_t motion;
+            if (nchorder_optical_read_motion(&motion) && motion.motion) {
+                // Send relative mouse movement via USB HID
+                nchorder_mouse_move(motion.dx, motion.dy);
+            }
+        }
 #endif
         idle_state_handle();
     }
