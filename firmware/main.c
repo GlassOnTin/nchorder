@@ -100,6 +100,8 @@
 #include "nchorder_hid.h"
 #include "nchorder_usb.h"
 #include "nchorder_led.h"
+#include "nchorder_flash.h"
+#include "raw_i2c_test.h"
 
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
 static void simple_delay_ms(uint32_t ms)
@@ -2036,13 +2038,6 @@ static void send_single_key(uint8_t modifiers, uint8_t keycode)
 {
     ret_code_t err_code;
 
-    // DEBUG: Log unexpected keycodes
-    if (keycode == HID_KEY_X) {
-        NRF_LOG_WARNING("DEBUG: Unexpected KEY_X (0x1B) being sent!");
-        // Skip sending 'x' to help debug
-        return;
-    }
-
     // Try USB first (wired connection takes priority)
     if (nchorder_usb_is_connected())
     {
@@ -2192,10 +2187,12 @@ static void send_consumer_report(uint16_t usage_code)
 
 /**@brief Callback for button state changes from Twiddler buttons.
  *
- * @param[in] button_state  16-bit bitmask of currently pressed buttons
+ * @param[in] button_state  32-bit bitmask of currently pressed buttons
  */
-static void nchorder_button_callback(uint16_t button_state)
+static void nchorder_button_callback(uint32_t button_state)
 {
+    NRF_LOG_INFO("CALLBACK: button_state=0x%05X", button_state);
+
     // Feed button state into chord state machine
     bool chord_completed = chord_update(&m_chord_ctx, (chord_t)button_state);
 
@@ -2204,7 +2201,7 @@ static void nchorder_button_callback(uint16_t button_state)
         // Get the completed chord and look up its mapping
         chord_t chord = chord_get_completed(&m_chord_ctx);
 
-        NRF_LOG_INFO("Chord completed: 0x%04X (%s)", chord, buttons_to_string(chord));
+        NRF_LOG_INFO("Chord completed: 0x%05X (%s)", chord, buttons_to_string(chord));
 
         // Try multi-char macro first (highest priority for text output)
         const multichar_key_t *macro_keys = NULL;
@@ -2229,7 +2226,7 @@ static void nchorder_button_callback(uint16_t button_state)
         const chord_mapping_t *key_map = chord_lookup_key(chord);
         if (key_map != NULL)
         {
-            NRF_LOG_DEBUG("Sending key: mod=0x%02X, key=0x%02X",
+            NRF_LOG_INFO("Key: mod=0x%02X key=0x%02X",
                           key_map->modifiers, key_map->keycode);
             send_single_key(key_map->modifiers, key_map->keycode);
             return;
@@ -2245,7 +2242,7 @@ static void nchorder_button_callback(uint16_t button_state)
             return;
         }
 
-        NRF_LOG_DEBUG("No mapping found for chord 0x%04X", chord);
+        NRF_LOG_INFO("No mapping for chord 0x%05X", chord);
     }
 }
 
@@ -2260,6 +2257,16 @@ static void nchorder_init(void)
 
     // Initialize chord detection state machine (loads default mappings)
     chord_init(&m_chord_ctx);
+
+    // Try to load saved config from flash
+    {
+        static uint8_t flash_load_buffer[4096];
+        uint16_t loaded = nchorder_flash_load_config(flash_load_buffer, sizeof(flash_load_buffer));
+        if (loaded > 0) {
+            chord_load_config(flash_load_buffer, loaded);
+            NRF_LOG_INFO("Twiddler: Loaded %d byte config from flash", loaded);
+        }
+    }
 
     // Initialize button input (Trill sensors on XIAO, GPIO on others)
     err_code = buttons_init();
@@ -2331,11 +2338,18 @@ int main(void)
 {
     bool erase_bonds;
 
-    // Brief startup delay for hardware stabilization
-    for (volatile int i = 0; i < 100000; i++);
+    // Disable QSPI peripheral to release P0.22/P0.23 for GPIO use
+    NRF_QSPI->ENABLE = 0;
+    NRF_QSPI->PSEL.IO0 = 0xFFFFFFFF;
+    NRF_QSPI->PSEL.IO1 = 0xFFFFFFFF;
+    NRF_QSPI->PSEL.IO2 = 0xFFFFFFFF;
+    NRF_QSPI->PSEL.IO3 = 0xFFFFFFFF;
+    NRF_QSPI->PSEL.SCK = 0xFFFFFFFF;
+    NRF_QSPI->PSEL.CSN = 0xFFFFFFFF;
 
     // Initialize logging first
     log_init();
+
     timers_init();
     buttons_leds_init(&erase_bonds);
     power_management_init();
@@ -2349,7 +2363,16 @@ int main(void)
     conn_params_init();
     buffer_init();
     peer_manager_init();
-    nchorder_led_init();
+    nchorder_flash_init();  // Initialize flash storage (FDS already init by peer_manager)
+
+    nchorder_led_init();    // Initialize RGB LED driver
+
+    // Test all 3 LEDs: L1=Red, L2=Green, L3=Blue
+    nchorder_led_set(0, LED_COLOR_RED);
+    nchorder_led_set(1, LED_COLOR_GREEN);
+    nchorder_led_set(2, LED_COLOR_BLUE);
+    nchorder_led_update();
+
     nchorder_init();
 
 #if defined(BOARD_XIAO_NRF52840)

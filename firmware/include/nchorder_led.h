@@ -1,14 +1,12 @@
 /**
  * Northern Chorder - RGB LED Driver
  *
- * WS2812/SK6812 addressable LED control via I2S peripheral.
+ * WS2812/SK6812 addressable LED control via GPIO bit-bang.
  * Hardware: 3 RGB LEDs (L1-L3) on thumb board, daisy-chained.
  *
- * I2S Encoding Approach:
- * - I2S at 3.2MHz (4x oversampling of 800kHz WS2812 protocol)
- * - Each WS2812 bit = 4 I2S bits
- * - Logic 0 = 0b1000 (high-low-low-low)
- * - Logic 1 = 0b1110 (high-high-high-low)
+ * Pin Configuration (Twiddler 4):
+ * - P1.10 (PIN_LED_POWER): Q1 transistor for power enable
+ * - P1.13 (PIN_LED_DATA): WS2812 data line
  */
 
 #ifndef NCHORDER_LED_H
@@ -26,26 +24,26 @@
 #define LED_L2                  1
 #define LED_L3                  2
 
-// Common colors (GRB order for WS2812)
+// Common colors (RGB order - these LEDs are NOT WS2812)
 #define LED_COLOR_OFF           0x00, 0x00, 0x00
-#define LED_COLOR_RED           0x00, 0xFF, 0x00
-#define LED_COLOR_GREEN         0xFF, 0x00, 0x00
+#define LED_COLOR_RED           0xFF, 0x00, 0x00
+#define LED_COLOR_GREEN         0x00, 0xFF, 0x00
 #define LED_COLOR_BLUE          0x00, 0x00, 0xFF
 #define LED_COLOR_WHITE         0xFF, 0xFF, 0xFF
 #define LED_COLOR_YELLOW        0xFF, 0xFF, 0x00
-#define LED_COLOR_CYAN          0xFF, 0x00, 0xFF
-#define LED_COLOR_MAGENTA       0x00, 0xFF, 0xFF
+#define LED_COLOR_CYAN          0x00, 0xFF, 0xFF
+#define LED_COLOR_MAGENTA       0xFF, 0x00, 0xFF
 
 // Dimmed versions for status indication (25% brightness)
-#define LED_DIM_RED             0x00, 0x40, 0x00
-#define LED_DIM_GREEN           0x40, 0x00, 0x00
+#define LED_DIM_RED             0x40, 0x00, 0x00
+#define LED_DIM_GREEN           0x00, 0x40, 0x00
 #define LED_DIM_BLUE            0x00, 0x00, 0x40
 #define LED_DIM_WHITE           0x40, 0x40, 0x40
 
 /**
  * @brief Initialize the LED driver.
  *
- * Configures I2S peripheral for WS2812 timing and initializes LEDs to off.
+ * Configures power enable and data pins, initializes LEDs to off.
  *
  * @return NRF_SUCCESS on success, error code otherwise.
  */
@@ -77,8 +75,8 @@ void nchorder_led_set_all(uint8_t r, uint8_t g, uint8_t b);
 /**
  * @brief Update LEDs with buffered colors.
  *
- * Encodes color data and transmits via I2S to WS2812 LEDs.
- * This function is non-blocking - data transfer happens via DMA.
+ * Transmits color data to WS2812 LEDs via GPIO bit-bang.
+ * This function is blocking (~100us for 3 LEDs).
  *
  * @return NRF_SUCCESS on success, error code otherwise.
  */
