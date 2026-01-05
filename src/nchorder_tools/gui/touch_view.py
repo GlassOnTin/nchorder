@@ -18,6 +18,7 @@ from kivy.properties import (
     NumericProperty, BooleanProperty, ListProperty, ObjectProperty, StringProperty
 )
 from kivy.clock import Clock
+from kivy.core.text import Label as CoreLabel
 
 from ..cdc_client import TouchFrame
 
@@ -149,27 +150,29 @@ class TouchBar(Widget):
 
 
 class TwiddlerButtonGrid(Widget):
-    """Twiddler 4 button layout with labels"""
+    """Twiddler 4 button layout with dynamic chord hints"""
 
     buttons = NumericProperty(0)  # Button bitmask
+    config = ObjectProperty(None, allownone=True)  # ChordConfig for hints
 
-    # Twiddler layout: Thumb column + 3 finger columns
-    # Row 0: T1  F1L F1M F1R
-    # Row 1: T2  F2L F2M F2R
-    # Row 2: T3  F3L F3M F3R
-    # Row 3: T4  F4L F4M F4R
-    # Row 4: T0  F0L F0M F0R
+    # Physical Twiddler layout:
+    # Row 0: Thumb buttons (T1, T0, T2, T3, T4)
+    # Row 1: F0 (index finger top row)
+    # Row 2-5: F1-F4 finger rows
+    # Empty string = no button at that position
 
     LAYOUT = [
-        ['T1', 'F1L', 'F1M', 'F1R'],
-        ['T2', 'F2L', 'F2M', 'F2R'],
-        ['T3', 'F3L', 'F3M', 'F3R'],
-        ['T4', 'F4L', 'F4M', 'F4R'],
-        ['T0', 'F0L', 'F0M', 'F0R'],
+        ['T1', 'T0', 'T2', 'T3', 'T4'],  # Thumb row
+        ['', 'F0L', 'F0M', 'F0R', ''],   # F0 row (centered)
+        ['', 'F1L', 'F1M', 'F1R', ''],   # F1 row
+        ['', 'F2L', 'F2M', 'F2R', ''],   # F2 row
+        ['', 'F3L', 'F3M', 'F3R', ''],   # F3 row
+        ['', 'F4L', 'F4M', 'F4R', ''],   # F4 row
     ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._chord_hints = {}  # button_name -> output_string
         self.bind(
             pos=self._update_canvas,
             size=self._update_canvas,
@@ -177,8 +180,53 @@ class TwiddlerButtonGrid(Widget):
         )
         self._update_canvas()
 
+    def _get_pressed_buttons(self) -> list:
+        """Get list of currently pressed button names, sorted by bit order."""
+        pressed = []
+        for btn_name, bit in BTN_BITS.items():
+            if self.buttons & (1 << bit):
+                pressed.append((bit, btn_name))
+        pressed.sort()
+        return [name for bit, name in pressed]
+
+    def _update_chord_hints(self):
+        """Update chord hints based on currently pressed buttons."""
+        self._chord_hints = {}
+
+        if not self.config:
+            return
+
+        pressed = self._get_pressed_buttons()
+        if not pressed:
+            return
+
+        # Get the current button mask
+        current_mask = self.buttons
+
+        # Look up all chords that START with the currently pressed buttons
+        for entry in self.config.entries:
+            if not entry.is_keyboard:
+                continue
+
+            chord_mask = entry.chord_mask
+
+            # Check if current buttons are a prefix of this chord
+            if (chord_mask & current_mask) == current_mask and chord_mask != current_mask:
+                # Find the "next" button(s) in this chord
+                remaining = chord_mask & ~current_mask
+                # Get the lowest bit (next button to press)
+                for bit in range(20):
+                    if remaining & (1 << bit):
+                        btn_name = BTN_NAMES.get(bit)
+                        if btn_name and btn_name not in self._chord_hints:
+                            self._chord_hints[btn_name] = entry.key_str()
+                        break  # Only show hint for next button in sequence
+
     def _update_canvas(self, *args):
         self.canvas.clear()
+
+        # Update chord hints based on current buttons
+        self._update_chord_hints()
 
         rows = len(self.LAYOUT)
         cols = len(self.LAYOUT[0])
@@ -193,16 +241,23 @@ class TwiddlerButtonGrid(Widget):
 
             for row_idx, row in enumerate(self.LAYOUT):
                 for col_idx, btn_name in enumerate(row):
+                    # Skip empty cells
+                    if not btn_name:
+                        continue
+
                     x = self.x + col_idx * cell_w
                     y = self.top - (row_idx + 1) * cell_h
 
                     # Get button state
                     bit = BTN_BITS.get(btn_name, -1)
                     is_pressed = bit >= 0 and (self.buttons >> bit) & 1
+                    has_hint = btn_name in self._chord_hints
 
                     # Button background
                     if is_pressed:
                         Color(0.2, 0.7, 0.3)  # Bright green when pressed
+                    elif has_hint:
+                        Color(0.2, 0.2, 0.3)  # Slightly highlighted for hint
                     else:
                         Color(0.25, 0.25, 0.25)  # Dark gray
 
@@ -215,6 +270,8 @@ class TwiddlerButtonGrid(Widget):
                     # Border
                     if is_pressed:
                         Color(0.4, 1.0, 0.5)
+                    elif has_hint:
+                        Color(0.4, 0.5, 0.7)  # Blue border for hints
                     else:
                         Color(0.4, 0.4, 0.4)
                     Line(
@@ -225,25 +282,47 @@ class TwiddlerButtonGrid(Widget):
                         width=1.2
                     )
 
-        # Draw labels on top (using Label widgets would be better but this works)
-        # Labels are drawn separately to be on top
+        # Draw labels on top
         self.canvas.after.clear()
         with self.canvas.after:
             for row_idx, row in enumerate(self.LAYOUT):
                 for col_idx, btn_name in enumerate(row):
-                    x = self.x + col_idx * cell_w + cell_w / 2
-                    y = self.top - (row_idx + 1) * cell_h + cell_h / 2
+                    # Skip empty cells
+                    if not btn_name:
+                        continue
+
+                    cx = self.x + col_idx * cell_w + cell_w / 2
+                    cy = self.top - (row_idx + 1) * cell_h + cell_h / 2
 
                     bit = BTN_BITS.get(btn_name, -1)
                     is_pressed = bit >= 0 and (self.buttons >> bit) & 1
+                    hint = self._chord_hints.get(btn_name)
 
-                    if is_pressed:
-                        Color(1, 1, 1)
+                    # Determine what text to show
+                    if hint and not is_pressed:
+                        # Show chord hint
+                        text = hint
+                        if len(text) > 3:
+                            text = text[:3]
+                        color = (0.4, 0.9, 0.4, 1)  # Green for hints
+                        font_size = 12
                     else:
-                        Color(0.6, 0.6, 0.6)
+                        # Show button name
+                        text = btn_name
+                        color = (1, 1, 1, 1) if is_pressed else (0.5, 0.5, 0.5, 1)
+                        font_size = 10
 
-                    # Draw button name as text (simple approach)
-                    # Note: For proper text, we'd use Label widgets
+                    # Render text
+                    label = CoreLabel(text=text, font_size=font_size, bold=is_pressed)
+                    label.refresh()
+                    texture = label.texture
+
+                    Color(*color)
+                    Rectangle(
+                        texture=texture,
+                        pos=(cx - texture.width / 2, cy - texture.height / 2),
+                        size=texture.size
+                    )
 
 
 class GPIODiagnostics(BoxLayout):
@@ -476,11 +555,13 @@ class TouchVisualizer(BoxLayout):
         self.spacing = 10
         self.padding = 5
 
-        # Top section: sensors and buttons
-        top_section = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
+        self._is_gpio_mode = False  # Track if we're in GPIO mode (Twiddler 4)
 
-        # Touch sensors (for nChorder - hidden if not available)
-        sensor_panel = BoxLayout(orientation='horizontal', spacing=5, size_hint_x=0.5)
+        # Top section: sensors and buttons
+        self.top_section = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
+
+        # Touch sensors (for nChorder - hidden when Twiddler 4 detected)
+        self.sensor_panel = BoxLayout(orientation='horizontal', spacing=5, size_hint_x=0.5)
         self.square = TouchSquare(size_hint_x=0.6)
         bar_panel = BoxLayout(orientation='horizontal', spacing=2, size_hint_x=0.4)
         self.bar0 = TouchBar(bar_index=0)
@@ -489,24 +570,20 @@ class TouchVisualizer(BoxLayout):
         bar_panel.add_widget(self.bar0)
         bar_panel.add_widget(self.bar1)
         bar_panel.add_widget(self.bar2)
-        sensor_panel.add_widget(bar_panel)
-        sensor_panel.add_widget(self.square)
+        self.sensor_panel.add_widget(bar_panel)
+        self.sensor_panel.add_widget(self.square)
 
         # Button grid (Twiddler 4 layout)
         self.button_grid = TwiddlerButtonGrid(size_hint_x=0.5)
 
-        top_section.add_widget(sensor_panel)
-        top_section.add_widget(self.button_grid)
+        self.top_section.add_widget(self.sensor_panel)
+        self.top_section.add_widget(self.button_grid)
 
         # Chord display (current chord + output)
         self.chord_display = ChordDisplay()
 
-        # Chord table
-        self.chord_table = ChordTable(size_hint_y=0.5)
-
-        self.add_widget(top_section)
+        self.add_widget(self.top_section)
         self.add_widget(self.chord_display)
-        self.add_widget(self.chord_table)
 
     def update(self, frame: TouchFrame):
         """Update display with new touch data"""
@@ -514,12 +591,22 @@ class TouchVisualizer(BoxLayout):
 
         # Check if GPIO driver (thumb_x == 0x1234)
         if frame.is_gpio_driver():
+            # Switch to GPIO mode - hide touch sensors, expand button grid
+            if not self._is_gpio_mode:
+                self._is_gpio_mode = True
+                self._hide_sensors()
+
             # GPIO mode - use raw buttons for display
             diag = frame.get_gpio_diagnostics()
             raw_buttons = diag.get('raw_buttons', 0)
             self.button_grid.buttons = raw_buttons if raw_buttons else frame.buttons
             self.chord_display.update_from_buttons(frame.buttons, self.config)
         else:
+            # Switch to touch sensor mode - show sensors
+            if self._is_gpio_mode:
+                self._is_gpio_mode = False
+                self._show_sensors()
+
             # Normal touch sensor mode
             # Square sensor
             self.square.touch_x = frame.thumb_x
@@ -535,7 +622,19 @@ class TouchVisualizer(BoxLayout):
             self.button_grid.buttons = frame.buttons
             self.chord_display.update_from_buttons(frame.buttons, self.config)
 
+    def _hide_sensors(self):
+        """Hide touch sensor panel (Twiddler 4 mode)"""
+        if self.sensor_panel.parent:
+            self.top_section.remove_widget(self.sensor_panel)
+            self.button_grid.size_hint_x = 1.0  # Expand button grid
+
+    def _show_sensors(self):
+        """Show touch sensor panel (nChorder mode)"""
+        if not self.sensor_panel.parent:
+            self.button_grid.size_hint_x = 0.5
+            self.top_section.add_widget(self.sensor_panel, index=1)  # Add before button_grid
+
     def load_config(self, config):
         """Load chord config for display and lookup"""
         self.config = config
-        self.chord_table.load_config(config)
+        self.button_grid.config = config  # Enable chord hints on button grid

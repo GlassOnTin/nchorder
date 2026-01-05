@@ -186,17 +186,22 @@ class MainLayout(BoxLayout):
         self.device = None
         self._streaming = False
 
-        # Status bar
-        self.status_bar = StatusBar()
-
         # Tabbed panel for different views
         self.tabs = TabbedPanel(do_default_tab=False, tab_pos='top_left')
 
-        # Tab 1: Touch visualizer with config
-        touch_tab = TabbedPanelItem(text='Touch & Config')
+        # Tab 1: Touch visualizer
+        touch_tab = TabbedPanelItem(text='Touch')
         touch_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
+        self.touch_vis = TouchVisualizer()
+        touch_content.add_widget(self.touch_vis)
+        touch_tab.add_widget(touch_content)
+        self.tabs.add_widget(touch_tab)
 
-        # Top: Load config button
+        # Tab 2: Device Config (sliders)
+        config_tab = TabbedPanelItem(text='Config')
+        config_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
+
+        # Load config button at top
         config_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, spacing=10)
         self.config_label = Label(text='No config loaded', size_hint_x=0.7, halign='left')
         self.config_label.bind(size=self.config_label.setter('text_size'))
@@ -204,32 +209,28 @@ class MainLayout(BoxLayout):
         load_cfg_btn.bind(on_press=self._on_load_config)
         config_bar.add_widget(self.config_label)
         config_bar.add_widget(load_cfg_btn)
-        touch_content.add_widget(config_bar)
+        config_content.add_widget(config_bar)
 
-        # Main content: visualizer and sliders
-        main_content = BoxLayout(orientation='horizontal', spacing=10)
-        self.touch_vis = TouchVisualizer(size_hint_x=0.7)
-        self.config_panel = ConfigPanel(size_hint_x=0.3)
-        main_content.add_widget(self.touch_vis)
-        main_content.add_widget(self.config_panel)
-        touch_content.add_widget(main_content)
+        # Config sliders
+        self.config_panel = ConfigPanel()
+        config_content.add_widget(self.config_panel)
 
-        touch_tab.add_widget(touch_content)
-        self.tabs.add_widget(touch_tab)
+        config_tab.add_widget(config_content)
+        self.tabs.add_widget(config_tab)
 
-        # Tab 2: Chord layout editor
+        # Tab 3: Chord layout editor
         chord_tab = TabbedPanelItem(text='Chord Editor')
         self.chord_map = ChordMapView()
         chord_tab.add_widget(self.chord_map)
         self.tabs.add_widget(chord_tab)
 
-        # Tab 3: Cheat Sheet
+        # Tab 4: Cheat Sheet
         cheatsheet_tab = TabbedPanelItem(text='Cheat Sheet')
         self.cheatsheet = CheatSheetView()
         cheatsheet_tab.add_widget(self.cheatsheet)
         self.tabs.add_widget(cheatsheet_tab)
 
-        # Tab 4: Debug (GPIO diagnostics)
+        # Tab 5: Debug (GPIO diagnostics)
         debug_tab = TabbedPanelItem(text='Debug')
         debug_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
         self.gpio_diag = GPIODiagnostics()
@@ -244,33 +245,13 @@ class MainLayout(BoxLayout):
         # Loaded chord config (shared between views)
         self._chord_config = None
 
-        # Connection controls
-        conn_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
-
-        self.port_spinner = Spinner(
-            text='Select Device',
-            values=['Scanning...'],
-            size_hint_x=0.5
-        )
-
-        self.connect_btn = Button(text='Connect', size_hint_x=0.25)
-        self.connect_btn.bind(on_press=self._on_connect)
-
-        self.stream_btn = Button(text='Start Stream', size_hint_x=0.25)
-        self.stream_btn.bind(on_press=self._on_stream)
-        self.stream_btn.disabled = True
-
-        conn_bar.add_widget(self.port_spinner)
-        conn_bar.add_widget(self.connect_btn)
-        conn_bar.add_widget(self.stream_btn)
-
-        # Add all to main layout
-        self.add_widget(self.status_bar)
+        # Add tabs to layout
         self.add_widget(self.tabs)
-        self.add_widget(conn_bar)
 
-        # Scan for devices
-        Clock.schedule_once(lambda dt: self._scan_devices(), 0.5)
+        # Auto-connect to first device found
+        Clock.schedule_once(lambda dt: self._auto_connect(), 0.5)
+        # Periodically check for device reconnection
+        Clock.schedule_interval(lambda dt: self._check_connection(), 2.0)
 
         # Try to auto-load default config
         Clock.schedule_once(lambda dt: self._try_load_default_config(), 0.2)
@@ -354,78 +335,34 @@ class MainLayout(BoxLayout):
         else:
             self.config_label.text = 'Failed to load config'
 
-    def _scan_devices(self, auto_connect=True):
-        """Scan for connected devices and optionally auto-connect"""
+    def _auto_connect(self):
+        """Auto-connect to first available device"""
+        if self.device and self.device.is_connected():
+            return  # Already connected
+
         devices = NChorderDevice.find_devices()
         if devices:
-            self.port_spinner.values = devices
-            self.port_spinner.text = devices[0]
-            # Auto-connect to first device
-            if auto_connect:
-                Clock.schedule_once(lambda dt: self._connect(), 0.1)
-        else:
-            self.port_spinner.values = ['No devices found']
-            self.port_spinner.text = 'No devices found'
+            self.device = NChorderDevice(devices[0])
+            if self.device.connect():
+                # Load device config
+                self.config_panel.device = self.device
+                self.config_panel.load_from_device()
 
-    def _on_connect(self, instance):
-        """Handle connect/disconnect button"""
+                # Set device for chord editor
+                self.chord_map.device = self.device
+
+                # Auto-start streaming
+                self._start_stream()
+
+    def _check_connection(self):
+        """Periodically check connection and reconnect if needed"""
         if self.device and self.device.is_connected():
-            self._disconnect()
-        else:
-            self._connect()
+            return  # Still connected
 
-    def _connect(self):
-        """Connect to selected device"""
-        port = self.port_spinner.text
-        if port in ['No devices found', 'Select Device', 'Scanning...']:
-            return
-
-        self.device = NChorderDevice(port)
-        if self.device.connect():
-            self.connect_btn.text = 'Disconnect'
-            self.stream_btn.disabled = False
-            self.status_bar.status_text = f"Connected: {port}"
-
-            # Get version
-            version = self.device.get_version()
-            if version:
-                self.status_bar.version_text = f"Firmware: {version}"
-
-            # Load config
-            self.config_panel.device = self.device
-            self.config_panel.load_from_device()
-
-            # Set device for chord editor
-            self.chord_map.device = self.device
-
-            # Auto-start streaming
-            self._start_stream()
-        else:
-            self.status_bar.status_text = "Connection failed"
-
-    def _disconnect(self):
-        """Disconnect from device"""
+        # Lost connection or not connected - try to reconnect
         if self._streaming:
-            self._stop_stream()
-
-        if self.device:
-            self.device.disconnect()
-            self.device = None
-
-        self.connect_btn.text = 'Connect'
-        self.stream_btn.disabled = True
-        self.stream_btn.text = 'Start Stream'
-        self.status_bar.status_text = "Disconnected"
-        self.status_bar.version_text = ""
-        self.config_panel.device = None
-        self.chord_map.device = None
-
-    def _on_stream(self, instance):
-        """Handle stream start/stop button"""
-        if self._streaming:
-            self._stop_stream()
-        else:
-            self._start_stream()
+            self._streaming = False
+        self._auto_connect()
 
     def _start_stream(self):
         """Start touch data streaming"""
@@ -434,14 +371,12 @@ class MainLayout(BoxLayout):
 
         if self.device.start_stream(callback=self._on_touch_frame, rate_hz=60):
             self._streaming = True
-            self.stream_btn.text = 'Stop Stream'
 
     def _stop_stream(self):
         """Stop touch data streaming"""
         if self.device:
             self.device.stop_stream()
         self._streaming = False
-        self.stream_btn.text = 'Start Stream'
 
     @mainthread
     def _on_touch_frame(self, frame: TouchFrame):
