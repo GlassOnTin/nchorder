@@ -3,13 +3,17 @@ Northern Chorder Configuration App
 
 Main Kivy application with:
 - Touch visualizer
+- Chord layout editor
 - Device connection management
 - Configuration controls
+
+Cross-platform: Windows, Linux, Mac, Android (via Kivy/Buildozer)
 """
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.slider import Slider
@@ -19,6 +23,7 @@ from kivy.clock import Clock, mainthread
 from kivy.properties import ObjectProperty, BooleanProperty, StringProperty
 
 from .touch_view import TouchVisualizer
+from .chord_view import ChordMapView
 from ..cdc_client import NChorderDevice, TouchFrame, ConfigID
 
 
@@ -181,17 +186,27 @@ class MainLayout(BoxLayout):
         # Status bar
         self.status_bar = StatusBar()
 
-        # Main content
-        content = BoxLayout(orientation='horizontal', spacing=10)
+        # Tabbed panel for different views
+        self.tabs = TabbedPanel(do_default_tab=False, tab_pos='top_left')
 
-        # Touch visualizer (left side)
+        # Tab 1: Touch visualizer with config
+        touch_tab = TabbedPanelItem(text='Touch & Config')
+        touch_content = BoxLayout(orientation='horizontal', spacing=10, padding=10)
         self.touch_vis = TouchVisualizer(size_hint_x=0.65)
-
-        # Config panel (right side)
         self.config_panel = ConfigPanel(size_hint_x=0.35)
+        touch_content.add_widget(self.touch_vis)
+        touch_content.add_widget(self.config_panel)
+        touch_tab.add_widget(touch_content)
+        self.tabs.add_widget(touch_tab)
 
-        content.add_widget(self.touch_vis)
-        content.add_widget(self.config_panel)
+        # Tab 2: Chord layout editor
+        chord_tab = TabbedPanelItem(text='Chord Editor')
+        self.chord_map = ChordMapView()
+        chord_tab.add_widget(self.chord_map)
+        self.tabs.add_widget(chord_tab)
+
+        # Set default tab
+        self.tabs.default_tab = touch_tab
 
         # Connection controls
         conn_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
@@ -215,18 +230,21 @@ class MainLayout(BoxLayout):
 
         # Add all to main layout
         self.add_widget(self.status_bar)
-        self.add_widget(content)
+        self.add_widget(self.tabs)
         self.add_widget(conn_bar)
 
         # Scan for devices
         Clock.schedule_once(lambda dt: self._scan_devices(), 0.5)
 
-    def _scan_devices(self):
-        """Scan for connected devices"""
+    def _scan_devices(self, auto_connect=True):
+        """Scan for connected devices and optionally auto-connect"""
         devices = NChorderDevice.find_devices()
         if devices:
             self.port_spinner.values = devices
             self.port_spinner.text = devices[0]
+            # Auto-connect to first device
+            if auto_connect:
+                Clock.schedule_once(lambda dt: self._connect(), 0.1)
         else:
             self.port_spinner.values = ['No devices found']
             self.port_spinner.text = 'No devices found'
@@ -259,6 +277,9 @@ class MainLayout(BoxLayout):
             self.config_panel.device = self.device
             self.config_panel.load_from_device()
 
+            # Set device for chord editor
+            self.chord_map.device = self.device
+
             # Auto-start streaming
             self._start_stream()
         else:
@@ -279,6 +300,7 @@ class MainLayout(BoxLayout):
         self.status_bar.status_text = "Disconnected"
         self.status_bar.version_text = ""
         self.config_panel.device = None
+        self.chord_map.device = None
 
     def _on_stream(self, instance):
         """Handle stream start/stop button"""
