@@ -1,7 +1,7 @@
 """
 Chord Layout Viewer and Editor
 
-Displays chord mappings in a grid and allows editing.
+Displays chord mappings in a tree view organized by button hierarchy.
 """
 
 import struct
@@ -18,6 +18,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.textinput import TextInput
 from kivy.uix.togglebutton import ToggleButton
+from kivy.uix.treeview import TreeView, TreeViewLabel, TreeViewNode
 from kivy.graphics import Color, Rectangle, Line
 from kivy.properties import (
     ObjectProperty, StringProperty, NumericProperty, ListProperty, DictProperty
@@ -227,6 +228,207 @@ class ChordConfig:
                 del self.entries[i]
                 return True
         return False
+
+
+class ChordTreeNode(BoxLayout, TreeViewNode):
+    """Tree node for a chord or button in the hierarchy"""
+
+    # Callback for edit request (set by parent)
+    on_edit_request = ObjectProperty(None)
+
+    def __init__(self, text='', output='', entry=None, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'horizontal'
+        self.size_hint_y = None
+        self.height = 28
+        self.entry = entry  # ChordEntry if this is a leaf with output
+        self._long_press_event = None
+        self._touch_start = None
+
+        # Button name label
+        self.btn_label = Label(
+            text=text,
+            size_hint_x=0.4,
+            halign='left',
+            valign='middle',
+            font_size='14sp'
+        )
+        self.btn_label.bind(size=self.btn_label.setter('text_size'))
+
+        # Output label (shows key mapping)
+        self.output_label = Label(
+            text=output,
+            size_hint_x=0.6,
+            halign='left',
+            valign='middle',
+            font_size='14sp',
+            bold=bool(output),
+            color=(0.4, 0.9, 0.4, 1) if output else (0.5, 0.5, 0.5, 1)
+        )
+        self.output_label.bind(size=self.output_label.setter('text_size'))
+
+        self.add_widget(self.btn_label)
+        self.add_widget(self.output_label)
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            # Right-click = immediate edit
+            if touch.button == 'right':
+                self._request_edit()
+                return True
+            # Long press detection
+            touch.grab(self)
+            self._touch_start = touch.pos
+            self._long_press_event = Clock.schedule_once(
+                lambda dt: self._on_long_press(), 0.5
+            )
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            if self._long_press_event:
+                self._long_press_event.cancel()
+                self._long_press_event = None
+        return super().on_touch_up(touch)
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is self and self._touch_start:
+            # Cancel long press if moved too far
+            dx = abs(touch.pos[0] - self._touch_start[0])
+            dy = abs(touch.pos[1] - self._touch_start[1])
+            if dx > 10 or dy > 10:
+                if self._long_press_event:
+                    self._long_press_event.cancel()
+                    self._long_press_event = None
+        return super().on_touch_move(touch)
+
+    def _on_long_press(self):
+        """Handle long press - request edit"""
+        self._long_press_event = None
+        self._request_edit()
+
+    def _request_edit(self):
+        """Request edit for this node"""
+        if self.on_edit_request and self.entry:
+            self.on_edit_request(self.entry)
+
+
+class ChordTreeView(BoxLayout):
+    """Tree view of chord mappings organized by button hierarchy"""
+
+    config = ObjectProperty(None, allownone=True)
+    on_select = ObjectProperty(None)  # Callback when entry selected
+    on_edit = ObjectProperty(None)    # Callback when edit requested (long-press/right-click)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+
+        # Scrollable tree
+        self.scroll = ScrollView()
+        self.tree = TreeView(
+            root_options={'text': 'Chords'},
+            hide_root=True,
+            indent_level=20
+        )
+        self.tree.size_hint_y = None
+        self.tree.bind(minimum_height=self.tree.setter('height'))
+        self.tree.bind(selected_node=self._on_node_select)
+        self.scroll.add_widget(self.tree)
+        self.add_widget(self.scroll)
+
+    def _on_node_select(self, tree, node):
+        """Handle node selection"""
+        if node and hasattr(node, 'entry') and node.entry and self.on_select:
+            self.on_select(node.entry)
+
+    def _on_node_edit(self, entry):
+        """Handle edit request from node"""
+        if self.on_edit:
+            self.on_edit(entry)
+
+    def refresh(self):
+        """Rebuild tree from config"""
+        # Clear existing nodes
+        for node in list(self.tree.iterate_all_nodes()):
+            self.tree.remove_node(node)
+
+        if not self.config or not self.config.entries:
+            return
+
+        # Build tree structure: button_name -> {sub_buttons -> {...}, entries: [...]}
+        # We organize by the buttons in the chord, sorted by bit position
+        tree_data = {}
+
+        for entry in self.config.entries:
+            if not entry.is_keyboard:
+                continue
+
+            # Get buttons in this chord, sorted by bit position
+            buttons = []
+            for i in range(20):
+                if entry.chord_mask & (1 << i):
+                    buttons.append(BTN_NAMES.get(i, f'B{i}'))
+
+            if not buttons:
+                continue
+
+            # Navigate/create tree path
+            current = tree_data
+            for btn in buttons[:-1]:  # All but last button
+                if btn not in current:
+                    current[btn] = {'_children': {}, '_entries': []}
+                current = current[btn]['_children']
+
+            # Last button holds the entry
+            last_btn = buttons[-1]
+            if last_btn not in current:
+                current[last_btn] = {'_children': {}, '_entries': []}
+            current[last_btn]['_entries'].append(entry)
+
+        # Recursively add nodes to tree
+        self._add_nodes(tree_data, None)
+
+    def _add_nodes(self, data: dict, parent):
+        """Recursively add nodes to tree"""
+        # Sort buttons for consistent display
+        btn_order = list(BTN_BITS.keys())
+
+        for btn_name in btn_order:
+            if btn_name not in data:
+                continue
+
+            node_data = data[btn_name]
+            entries = node_data.get('_entries', [])
+            children = node_data.get('_children', {})
+
+            # Determine output text
+            if entries:
+                # Show first entry's output (usually just one per chord)
+                output_text = entries[0].key_str()
+                entry = entries[0]
+            else:
+                output_text = ''
+                entry = None
+
+            # Create node
+            node = ChordTreeNode(
+                text=btn_name,
+                output=output_text,
+                entry=entry,
+                is_open=False
+            )
+            node.on_edit_request = self._on_node_edit
+
+            if parent:
+                self.tree.add_node(node, parent)
+            else:
+                self.tree.add_node(node)
+
+            # Add children recursively
+            if children:
+                self._add_nodes(children, node)
 
 
 class ChordListItem(BoxLayout):
@@ -545,8 +747,105 @@ class ChordEditor(BoxLayout):
             self.on_save(None)
 
 
+class ChordEditPopup(Popup):
+    """Compact popup for editing a chord's output"""
+
+    def __init__(self, entry: ChordEntry, on_save=None, on_delete=None, **kwargs):
+        super().__init__(**kwargs)
+        self.entry = entry
+        self._on_save = on_save
+        self._on_delete = on_delete
+
+        self.title = f'Edit: {entry.chord_str()}'
+        self.size_hint = (0.85, 0.5)
+
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        # Current mapping display
+        current_lbl = Label(
+            text=f'Current: {entry.key_str()}',
+            size_hint_y=None,
+            height=30
+        )
+        content.add_widget(current_lbl)
+
+        # Key input
+        key_row = BoxLayout(size_hint_y=None, height=40, spacing=10)
+        key_row.add_widget(Label(text='Key:', size_hint_x=0.3))
+        self.key_input = TextInput(
+            text=entry.key_str().lstrip('C-A-S-'),
+            multiline=False,
+            size_hint_x=0.7
+        )
+        key_row.add_widget(self.key_input)
+        content.add_widget(key_row)
+
+        # Modifier toggles
+        mod_row = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        self.shift_btn = ToggleButton(text='Shift', state='down' if entry.has_shift else 'normal')
+        self.alt_btn = ToggleButton(text='Alt', state='down' if entry.has_alt else 'normal')
+        self.ctrl_btn = ToggleButton(text='Ctrl', state='down' if entry.has_ctrl else 'normal')
+        mod_row.add_widget(self.shift_btn)
+        mod_row.add_widget(self.alt_btn)
+        mod_row.add_widget(self.ctrl_btn)
+        content.add_widget(mod_row)
+
+        # Buttons
+        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
+        save_btn = Button(text='Save')
+        save_btn.bind(on_press=self._do_save)
+        delete_btn = Button(text='Delete')
+        delete_btn.bind(on_press=self._do_delete)
+        cancel_btn = Button(text='Cancel')
+        cancel_btn.bind(on_press=lambda x: self.dismiss())
+        btn_row.add_widget(save_btn)
+        btn_row.add_widget(delete_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
+
+        self.content = content
+
+    def _do_save(self, instance):
+        """Save changes"""
+        key_text = self.key_input.text.strip().lower()
+        if not key_text:
+            return
+
+        # Look up keycode
+        keycode = HID_CODES.get(key_text)
+        if keycode is None:
+            # Check shifted
+            if key_text in SHIFTED:
+                base, _ = SHIFTED[key_text]
+                keycode = HID_CODES.get(base)
+            if keycode is None:
+                return
+
+        # Build modifier field
+        mod_flags = 0
+        if self.shift_btn.state == 'down' or key_text in SHIFTED:
+            mod_flags |= 0x20
+        if self.alt_btn.state == 'down':
+            mod_flags |= 0x04
+        if self.ctrl_btn.state == 'down':
+            mod_flags |= 0x02
+
+        modifier = (mod_flags << 8) | 0x02  # 0x02 = keyboard event
+
+        new_entry = ChordEntry(self.entry.chord_mask, modifier, keycode)
+        if self._on_save:
+            self._on_save(new_entry)
+        self.dismiss()
+
+    def _do_delete(self, instance):
+        """Delete this chord"""
+        if self._on_delete:
+            self._on_delete(self.entry)
+        self.dismiss()
+
+
 class ChordMapView(BoxLayout):
-    """Main chord map view with list and editor"""
+    """Main chord map view with tree and minimal controls"""
 
     config = ObjectProperty(None, allownone=True)
     device = ObjectProperty(None, allownone=True)
@@ -554,59 +853,92 @@ class ChordMapView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.padding = 10
-        self.spacing = 10
+        self.padding = 5
+        self.spacing = 5
 
-        # Toolbar
-        toolbar = BoxLayout(size_hint_y=None, height=50, spacing=10)
+        # Compact toolbar
+        toolbar = BoxLayout(size_hint_y=None, height=40, spacing=5)
 
-        load_btn = Button(text='Load Config', size_hint_x=0.25)
+        load_btn = Button(text='Load', size_hint_x=0.25)
         load_btn.bind(on_press=self._on_load)
 
-        save_btn = Button(text='Save Config', size_hint_x=0.25)
+        save_btn = Button(text='Save', size_hint_x=0.25)
         save_btn.bind(on_press=self._on_save)
 
-        upload_btn = Button(text='Upload to Device', size_hint_x=0.25)
+        upload_btn = Button(text='Upload', size_hint_x=0.25)
         upload_btn.bind(on_press=self._on_upload)
 
-        new_btn = Button(text='New Chord', size_hint_x=0.25)
-        new_btn.bind(on_press=self._on_new)
+        # Search/filter (future feature)
+        self.search_input = TextInput(
+            hint_text='Search...',
+            size_hint_x=0.25,
+            multiline=False
+        )
 
         toolbar.add_widget(load_btn)
         toolbar.add_widget(save_btn)
         toolbar.add_widget(upload_btn)
-        toolbar.add_widget(new_btn)
+        toolbar.add_widget(self.search_input)
         self.add_widget(toolbar)
 
         # Status/filename
         self.status_label = Label(
             text='No config loaded',
             size_hint_y=None,
-            height=30
+            height=25,
+            font_size='12sp'
         )
         self.add_widget(self.status_label)
 
-        # Main content: list on left, editor on right
-        content = BoxLayout(spacing=10)
+        # Tree view (main content)
+        self.chord_tree = ChordTreeView()
+        self.chord_tree.on_select = self._on_chord_select
+        self.chord_tree.on_edit = self._on_chord_edit
+        self.add_widget(self.chord_tree)
 
-        self.chord_list = ChordListView(size_hint_x=0.6)
-        self.chord_list.bind(selected_entry=self._on_select)
-
-        self.editor = ChordEditor(size_hint_x=0.4)
-        self.editor.on_save = self._on_editor_save
-
-        content.add_widget(self.chord_list)
-        content.add_widget(self.editor)
-        self.add_widget(content)
+        # Selected chord info (compact)
+        self.info_label = Label(
+            text='Long-press or right-click to edit',
+            size_hint_y=None,
+            height=30,
+            font_size='13sp'
+        )
+        self.add_widget(self.info_label)
 
         self._config = ChordConfig()
+
+    def _on_chord_select(self, entry: ChordEntry):
+        """Handle chord selection from tree"""
+        self.info_label.text = f'{entry.chord_str()}  →  {entry.key_str()}'
+
+    def _on_chord_edit(self, entry: ChordEntry):
+        """Handle edit request - show popup"""
+        popup = ChordEditPopup(
+            entry,
+            on_save=self._on_edit_save,
+            on_delete=self._on_edit_delete
+        )
+        popup.open()
+
+    def _on_edit_save(self, entry: ChordEntry):
+        """Save edited chord"""
+        self._config.add_or_update(entry)
+        self.chord_tree.refresh()
+        self.status_label.text = 'Chord updated'
+
+    def _on_edit_delete(self, entry: ChordEntry):
+        """Delete chord"""
+        self._config.remove(entry.chord_mask)
+        self.chord_tree.refresh()
+        self.status_label.text = 'Chord deleted'
 
     def _on_load(self, instance):
         """Show file chooser to load config"""
         content = BoxLayout(orientation='vertical')
 
+        start_path = str(Path.cwd() / 'configs') if (Path.cwd() / 'configs').exists() else str(Path.home())
         chooser = FileChooserListView(
-            path=str(Path.home()),
+            path=start_path,
             filters=['*.cfg']
         )
         content.add_widget(chooser)
@@ -640,10 +972,9 @@ class ChordMapView(BoxLayout):
     def load_config(self, filepath: str):
         """Load config file"""
         if self._config.load(filepath):
-            self.chord_list.config = self._config
-            self.chord_list.refresh()
+            self.chord_tree.config = self._config
+            self.chord_tree.refresh()
             self.status_label.text = f'{Path(filepath).name} ({len(self._config.entries)} chords)'
-            self.editor.load_entry(None)
 
     def _on_save(self, instance):
         """Save config to file"""
@@ -651,7 +982,6 @@ class ChordMapView(BoxLayout):
             if self._config.save():
                 self.status_label.text = f'Saved: {self._config.filepath.name}'
         else:
-            # TODO: Show save dialog
             self.status_label.text = 'No file path set'
 
     def _on_upload(self, instance):
@@ -661,10 +991,10 @@ class ChordMapView(BoxLayout):
             return
 
         # Build config bytes
-        header = bytes(self._config.header)
-        struct.pack_into('<H', bytearray(header), 8, len(self._config.entries))
+        header = bytearray(self._config.header)
+        struct.pack_into('<H', header, 8, len(self._config.entries))
 
-        data = header
+        data = bytes(header)
         for entry in self._config.entries:
             data += entry.to_bytes()
 
@@ -672,27 +1002,3 @@ class ChordMapView(BoxLayout):
             self.status_label.text = 'Config uploaded!'
         else:
             self.status_label.text = 'Upload failed'
-
-    def _on_new(self, instance):
-        """Create new chord"""
-        self.chord_list.select(None)
-        self.editor.load_entry(None)
-
-    def _on_select(self, instance, entry):
-        """Handle chord selection"""
-        self.editor.load_entry(entry)
-
-    def _on_editor_save(self, entry: Optional[ChordEntry]):
-        """Handle save from editor"""
-        if entry is None:
-            # Delete
-            if self.editor.entry:
-                self._config.remove(self.editor.entry.chord_mask)
-                self.status_label.text = 'Chord deleted'
-        else:
-            # Add/update
-            self._config.add_or_update(entry)
-            self.status_label.text = 'Chord saved'
-
-        self.chord_list.refresh()
-        self.editor.load_entry(None)

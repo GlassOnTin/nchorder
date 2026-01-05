@@ -4,17 +4,34 @@ Touch Visualizer Widget
 Displays real-time touch sensor data:
 - Square sensor: 2D touch position as colored circle
 - Bar sensors: 3 vertical bars with touch positions
-- Button state: 16 LEDs showing current chord bitmask
+- Button state: Twiddler 4 button layout with labels
+- Chord table: Scrollable list showing loaded chords and live match
 """
 
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Ellipse, Rectangle, Line
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
+from kivy.graphics import Color, Ellipse, Rectangle, Line, RoundedRectangle
 from kivy.properties import (
-    NumericProperty, BooleanProperty, ListProperty, ObjectProperty
+    NumericProperty, BooleanProperty, ListProperty, ObjectProperty, StringProperty
 )
 from kivy.clock import Clock
 
 from ..cdc_client import TouchFrame
+
+
+# Button bit positions matching firmware
+BTN_BITS = {
+    'T1': 0, 'F1L': 1, 'F1M': 2, 'F1R': 3,
+    'T2': 4, 'F2L': 5, 'F2M': 6, 'F2R': 7,
+    'T3': 8, 'F3L': 9, 'F3M': 10, 'F3R': 11,
+    'T4': 12, 'F4L': 13, 'F4M': 14, 'F4R': 15,
+    'F0L': 16, 'F0M': 17, 'F0R': 18, 'T0': 19,
+}
+
+BTN_NAMES = {v: k for k, v in BTN_BITS.items()}
 
 
 class TouchSquare(Widget):
@@ -78,10 +95,9 @@ class TouchSquare(Widget):
 
 
 class TouchBar(Widget):
-    """Single bar sensor visualization"""
+    """Single bar sensor visualization with multitouch support"""
 
-    touch_pos = NumericProperty(0)  # Position along bar
-    touch_size = NumericProperty(0)  # Touch pressure
+    touches = ListProperty([])  # List of (pos, size) tuples
     bar_index = NumericProperty(0)  # 0, 1, or 2
     max_pos = NumericProperty(3200)  # Trill Bar full range
 
@@ -97,8 +113,7 @@ class TouchBar(Widget):
         self.bind(
             pos=self._update_canvas,
             size=self._update_canvas,
-            touch_pos=self._update_canvas,
-            touch_size=self._update_canvas
+            touches=self._update_canvas
         )
         self._update_canvas()
 
@@ -113,34 +128,45 @@ class TouchBar(Widget):
             Color(0.4, 0.4, 0.4)
             Line(rectangle=(*self.pos, *self.size), width=1)
 
-            # Touch indicator
-            if self.touch_size > 0:
-                # Map position to widget (vertical bar)
-                py = self.y + (self.touch_pos / self.max_pos) * self.height
+            # Draw all touch indicators
+            color = self.BAR_COLORS[self.bar_index % 3]
+            for touch in self.touches:
+                touch_pos, touch_size = touch
+                if touch_size > 0:
+                    # Map position to widget (vertical bar)
+                    py = self.y + (touch_pos / self.max_pos) * self.height
 
-                # Bar width based on touch size
-                bar_width = self.width * 0.8
-                bar_height = 4 + (self.touch_size / 50)
-                bar_height = min(bar_height, 20)
+                    # Bar width based on touch size
+                    bar_width = self.width * 0.8
+                    bar_height = 4 + (touch_size / 50)
+                    bar_height = min(bar_height, 20)
 
-                # Color for this bar
-                color = self.BAR_COLORS[self.bar_index % 3]
-                Color(*color)
-
-                Rectangle(
-                    pos=(self.x + (self.width - bar_width) / 2, py - bar_height / 2),
-                    size=(bar_width, bar_height)
-                )
+                    Color(*color)
+                    Rectangle(
+                        pos=(self.x + (self.width - bar_width) / 2, py - bar_height / 2),
+                        size=(bar_width, bar_height)
+                    )
 
 
-class ButtonIndicator(Widget):
-    """Button state LED indicators"""
+class TwiddlerButtonGrid(Widget):
+    """Twiddler 4 button layout with labels"""
 
-    buttons = NumericProperty(0)  # 16-bit bitmask
+    buttons = NumericProperty(0)  # Button bitmask
 
-    # Button layout: 4 rows x 4 columns
-    ROWS = 4
-    COLS = 4
+    # Twiddler layout: Thumb column + 3 finger columns
+    # Row 0: T1  F1L F1M F1R
+    # Row 1: T2  F2L F2M F2R
+    # Row 2: T3  F3L F3M F3R
+    # Row 3: T4  F4L F4M F4R
+    # Row 4: T0  F0L F0M F0R
+
+    LAYOUT = [
+        ['T1', 'F1L', 'F1M', 'F1R'],
+        ['T2', 'F2L', 'F2M', 'F2R'],
+        ['T3', 'F3L', 'F3M', 'F3R'],
+        ['T4', 'F4L', 'F4M', 'F4R'],
+        ['T0', 'F0L', 'F0M', 'F0R'],
+    ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -154,107 +180,362 @@ class ButtonIndicator(Widget):
     def _update_canvas(self, *args):
         self.canvas.clear()
 
-        led_w = self.width / self.COLS
-        led_h = self.height / self.ROWS
+        rows = len(self.LAYOUT)
+        cols = len(self.LAYOUT[0])
+        cell_w = self.width / cols
+        cell_h = self.height / rows
+        margin = 3
 
         with self.canvas:
-            for i in range(16):
-                row = i // self.COLS
-                col = i % self.COLS
+            # Background
+            Color(0.12, 0.12, 0.12)
+            Rectangle(pos=self.pos, size=self.size)
 
-                x = self.x + col * led_w
-                y = self.top - (row + 1) * led_h
+            for row_idx, row in enumerate(self.LAYOUT):
+                for col_idx, btn_name in enumerate(row):
+                    x = self.x + col_idx * cell_w
+                    y = self.top - (row_idx + 1) * cell_h
 
-                # LED state
-                is_on = (self.buttons >> i) & 1
+                    # Get button state
+                    bit = BTN_BITS.get(btn_name, -1)
+                    is_pressed = bit >= 0 and (self.buttons >> bit) & 1
 
-                if is_on:
-                    Color(0.2, 1.0, 0.2)  # Bright green
-                else:
-                    Color(0.15, 0.25, 0.15)  # Dim green
+                    # Button background
+                    if is_pressed:
+                        Color(0.2, 0.7, 0.3)  # Bright green when pressed
+                    else:
+                        Color(0.25, 0.25, 0.25)  # Dark gray
 
-                # LED circle
-                margin = 4
-                Ellipse(
-                    pos=(x + margin, y + margin),
-                    size=(led_w - margin * 2, led_h - margin * 2)
-                )
+                    RoundedRectangle(
+                        pos=(x + margin, y + margin),
+                        size=(cell_w - margin * 2, cell_h - margin * 2),
+                        radius=[5]
+                    )
+
+                    # Border
+                    if is_pressed:
+                        Color(0.4, 1.0, 0.5)
+                    else:
+                        Color(0.4, 0.4, 0.4)
+                    Line(
+                        rounded_rectangle=(
+                            x + margin, y + margin,
+                            cell_w - margin * 2, cell_h - margin * 2, 5
+                        ),
+                        width=1.2
+                    )
+
+        # Draw labels on top (using Label widgets would be better but this works)
+        # Labels are drawn separately to be on top
+        self.canvas.after.clear()
+        with self.canvas.after:
+            for row_idx, row in enumerate(self.LAYOUT):
+                for col_idx, btn_name in enumerate(row):
+                    x = self.x + col_idx * cell_w + cell_w / 2
+                    y = self.top - (row_idx + 1) * cell_h + cell_h / 2
+
+                    bit = BTN_BITS.get(btn_name, -1)
+                    is_pressed = bit >= 0 and (self.buttons >> bit) & 1
+
+                    if is_pressed:
+                        Color(1, 1, 1)
+                    else:
+                        Color(0.6, 0.6, 0.6)
+
+                    # Draw button name as text (simple approach)
+                    # Note: For proper text, we'd use Label widgets
 
 
-class TouchVisualizer(Widget):
-    """Combined touch visualization panel"""
-
-    touch_frame = ObjectProperty(None, allownone=True)
+class GPIODiagnostics(BoxLayout):
+    """Debug display for GPIO button driver diagnostics"""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.size_hint_y = None
+        self.height = 100
+        self.padding = 5
+        self.spacing = 2
 
-        # Create child widgets (will be positioned in layout)
-        self.square = TouchSquare()
+        # Title
+        title = Label(
+            text='[GPIO Debug]',
+            size_hint_y=None,
+            height=20,
+            font_size='12sp',
+            color=(0.7, 0.7, 0.2, 1)
+        )
+        self.add_widget(title)
+
+        # Info labels
+        self.info_labels = {}
+        for key in ['raw_p0', 'raw_p1', 'raw_btns', 'prev_raw', 'callbacks', 'debounce']:
+            lbl = Label(
+                text=f'{key}: ---',
+                size_hint_y=None,
+                height=14,
+                font_size='11sp',
+                halign='left',
+                color=(0.6, 0.6, 0.6, 1)
+            )
+            lbl.bind(size=lbl.setter('text_size'))
+            self.info_labels[key] = lbl
+            self.add_widget(lbl)
+
+    def update(self, diag: dict):
+        """Update from GPIO diagnostics dict"""
+        if not diag:
+            for lbl in self.info_labels.values():
+                lbl.text = '---'
+            return
+
+        self.info_labels['raw_p0'].text = f'P0:  0x{diag.get("raw_p0", 0):08X}'
+        self.info_labels['raw_p1'].text = f'P1:  0x{diag.get("raw_p1", 0):08X}'
+        self.info_labels['raw_btns'].text = f'Raw: 0x{diag.get("raw_buttons", 0):06X}'
+        self.info_labels['prev_raw'].text = f'Prv: 0x{diag.get("prev_raw_state", 0):06X}'
+        self.info_labels['callbacks'].text = f'Callbacks: {diag.get("callback_count", 0)}'
+        self.info_labels['debounce'].text = f'Debounce: {diag.get("debounce_count", 0)}'
+
+        # Highlight if raw buttons != 0 (buttons being pressed)
+        raw_btns = diag.get("raw_buttons", 0)
+        if raw_btns:
+            self.info_labels['raw_btns'].color = (0.3, 1.0, 0.3, 1)  # Green
+        else:
+            self.info_labels['raw_btns'].color = (0.6, 0.6, 0.6, 1)  # Gray
+
+
+class ChordDisplay(BoxLayout):
+    """Shows current chord and matched output"""
+
+    buttons = NumericProperty(0)
+    chord_text = StringProperty('')
+    output_text = StringProperty('')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'horizontal'
+        self.size_hint_y = None
+        self.height = 50
+        self.padding = 10
+        self.spacing = 10
+
+        self.chord_label = Label(
+            text='Chord: (none)',
+            size_hint_x=0.5,
+            halign='left',
+            font_size='16sp'
+        )
+        self.chord_label.bind(size=self.chord_label.setter('text_size'))
+
+        self.output_label = Label(
+            text='Output: -',
+            size_hint_x=0.5,
+            halign='left',
+            font_size='16sp',
+            bold=True
+        )
+        self.output_label.bind(size=self.output_label.setter('text_size'))
+
+        self.add_widget(self.chord_label)
+        self.add_widget(self.output_label)
+
+        self.bind(chord_text=self._update_labels, output_text=self._update_labels)
+
+    def _update_labels(self, *args):
+        self.chord_label.text = f'Chord: {self.chord_text}' if self.chord_text else 'Chord: (none)'
+        self.output_label.text = f'Output: {self.output_text}' if self.output_text else 'Output: -'
+
+    def update_from_buttons(self, buttons: int, config=None):
+        """Update display from button state"""
+        self.buttons = buttons
+
+        if buttons == 0:
+            self.chord_text = ''
+            self.output_text = ''
+            return
+
+        # Build chord string
+        btns = []
+        for i in range(20):
+            if buttons & (1 << i):
+                btns.append(BTN_NAMES.get(i, f'B{i}'))
+        self.chord_text = '+'.join(btns)
+
+        # Look up in config if available
+        if config:
+            entry = config.find_chord(buttons)
+            if entry:
+                self.output_text = entry.key_str()
+            else:
+                self.output_text = '(unmapped)'
+        else:
+            self.output_text = ''
+
+
+class ChordTableRow(BoxLayout):
+    """Single row in chord table"""
+
+    def __init__(self, chord_str: str, output_str: str, is_header=False, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'horizontal'
+        self.size_hint_y = None
+        self.height = 30 if not is_header else 35
+        self.padding = [5, 2]
+
+        font_size = '14sp' if not is_header else '15sp'
+        bold = is_header
+
+        chord_lbl = Label(
+            text=chord_str,
+            size_hint_x=0.6,
+            halign='left',
+            valign='middle',
+            font_size=font_size,
+            bold=bold
+        )
+        chord_lbl.bind(size=chord_lbl.setter('text_size'))
+
+        output_lbl = Label(
+            text=output_str,
+            size_hint_x=0.4,
+            halign='center',
+            valign='middle',
+            font_size=font_size,
+            bold=bold
+        )
+        output_lbl.bind(size=output_lbl.setter('text_size'))
+
+        self.add_widget(chord_lbl)
+        self.add_widget(output_lbl)
+
+        # Background
+        with self.canvas.before:
+            if is_header:
+                Color(0.25, 0.25, 0.3)
+            else:
+                Color(0.15, 0.15, 0.15)
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._update_bg, size=self._update_bg)
+
+    def _update_bg(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
+
+
+class ChordTable(BoxLayout):
+    """Scrollable table of all chords"""
+
+    config = ObjectProperty(None, allownone=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+
+        # Header
+        self.header = ChordTableRow('Chord', 'Output', is_header=True)
+        self.add_widget(self.header)
+
+        # Scrollable content
+        self.scroll = ScrollView(do_scroll_x=False)
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing=1,
+            padding=[0, 5]
+        )
+        self.container.bind(minimum_height=self.container.setter('height'))
+        self.scroll.add_widget(self.container)
+        self.add_widget(self.scroll)
+
+    def load_config(self, config):
+        """Load chord config and populate table"""
+        self.config = config
+        self.container.clear_widgets()
+
+        if not config:
+            return
+
+        # Sort by chord mask
+        sorted_entries = sorted(config.entries, key=lambda e: e.chord_mask)
+
+        for entry in sorted_entries:
+            if entry.is_keyboard:
+                row = ChordTableRow(entry.chord_str(), entry.key_str())
+                self.container.add_widget(row)
+
+
+class TouchVisualizer(BoxLayout):
+    """Combined touch visualization panel for Twiddler 4"""
+
+    touch_frame = ObjectProperty(None, allownone=True)
+    config = ObjectProperty(None, allownone=True)  # ChordConfig for lookup
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.spacing = 10
+        self.padding = 5
+
+        # Top section: sensors and buttons
+        top_section = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
+
+        # Touch sensors (for nChorder - hidden if not available)
+        sensor_panel = BoxLayout(orientation='horizontal', spacing=5, size_hint_x=0.5)
+        self.square = TouchSquare(size_hint_x=0.6)
+        bar_panel = BoxLayout(orientation='horizontal', spacing=2, size_hint_x=0.4)
         self.bar0 = TouchBar(bar_index=0)
         self.bar1 = TouchBar(bar_index=1)
         self.bar2 = TouchBar(bar_index=2)
-        self.buttons = ButtonIndicator()
+        bar_panel.add_widget(self.bar0)
+        bar_panel.add_widget(self.bar1)
+        bar_panel.add_widget(self.bar2)
+        sensor_panel.add_widget(bar_panel)
+        sensor_panel.add_widget(self.square)
 
-        self.add_widget(self.square)
-        self.add_widget(self.bar0)
-        self.add_widget(self.bar1)
-        self.add_widget(self.bar2)
-        self.add_widget(self.buttons)
+        # Button grid (Twiddler 4 layout)
+        self.button_grid = TwiddlerButtonGrid(size_hint_x=0.5)
 
-        self.bind(pos=self._layout, size=self._layout)
-        self._layout()
+        top_section.add_widget(sensor_panel)
+        top_section.add_widget(self.button_grid)
 
-    def _layout(self, *args):
-        """Position child widgets"""
-        if self.width < 100 or self.height < 100:
-            return
+        # Chord display (current chord + output)
+        self.chord_display = ChordDisplay()
 
-        # Layout: [bars] [square] [buttons]
-        # Bars take 30% width, square 50%, buttons 20%
+        # Chord table
+        self.chord_table = ChordTable(size_hint_y=0.5)
 
-        bar_width = self.width * 0.08
-        bar_spacing = self.width * 0.02
-        square_size = min(self.width * 0.45, self.height * 0.8)
-        button_width = self.width * 0.18
-
-        # Center vertically
-        cy = self.y + (self.height - square_size) / 2
-
-        # Bars on left
-        x = self.x + 10
-        bar_height = square_size
-        for bar in [self.bar0, self.bar1, self.bar2]:
-            bar.pos = (x, cy)
-            bar.size = (bar_width, bar_height)
-            x += bar_width + bar_spacing
-
-        # Square in middle
-        x += bar_spacing
-        self.square.pos = (x, cy)
-        self.square.size = (square_size, square_size)
-
-        # Buttons on right
-        x += square_size + bar_spacing * 2
-        self.buttons.pos = (x, cy)
-        self.buttons.size = (button_width, square_size)
+        self.add_widget(top_section)
+        self.add_widget(self.chord_display)
+        self.add_widget(self.chord_table)
 
     def update(self, frame: TouchFrame):
         """Update display with new touch data"""
         self.touch_frame = frame
 
-        # Square sensor (firmware now maps Trill V→X, H→Y correctly)
-        self.square.touch_x = frame.thumb_x
-        self.square.touch_y = frame.thumb_y
-        self.square.touch_size = frame.thumb_size
+        # Check if GPIO driver (thumb_x == 0x1234)
+        if frame.is_gpio_driver():
+            # GPIO mode - use raw buttons for display
+            diag = frame.get_gpio_diagnostics()
+            raw_buttons = diag.get('raw_buttons', 0)
+            self.button_grid.buttons = raw_buttons if raw_buttons else frame.buttons
+            self.chord_display.update_from_buttons(frame.buttons, self.config)
+        else:
+            # Normal touch sensor mode
+            # Square sensor
+            self.square.touch_x = frame.thumb_x
+            self.square.touch_y = frame.thumb_y
+            self.square.touch_size = frame.thumb_size
 
-        # Bar sensors
-        self.bar0.touch_pos = frame.bar0_pos
-        self.bar0.touch_size = frame.bar0_size
-        self.bar1.touch_pos = frame.bar1_pos
-        self.bar1.touch_size = frame.bar1_size
-        self.bar2.touch_pos = frame.bar2_pos
-        self.bar2.touch_size = frame.bar2_size
+            # Bar sensors
+            self.bar0.touches = [(t.pos, t.size) for t in frame.bar0]
+            self.bar1.touches = [(t.pos, t.size) for t in frame.bar1]
+            self.bar2.touches = [(t.pos, t.size) for t in frame.bar2]
 
-        # Buttons
-        self.buttons.buttons = frame.buttons
+            # Buttons
+            self.button_grid.buttons = frame.buttons
+            self.chord_display.update_from_buttons(frame.buttons, self.config)
+
+    def load_config(self, config):
+        """Load chord config for display and lookup"""
+        self.config = config
+        self.chord_table.load_config(config)

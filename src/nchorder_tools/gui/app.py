@@ -22,8 +22,11 @@ from kivy.uix.popup import Popup
 from kivy.clock import Clock, mainthread
 from kivy.properties import ObjectProperty, BooleanProperty, StringProperty
 
-from .touch_view import TouchVisualizer
-from .chord_view import ChordMapView
+from pathlib import Path
+
+from .touch_view import TouchVisualizer, GPIODiagnostics
+from .chord_view import ChordMapView, ChordConfig
+from .cheatsheet_view import CheatSheetView
 from ..cdc_client import NChorderDevice, TouchFrame, ConfigID
 
 
@@ -191,11 +194,26 @@ class MainLayout(BoxLayout):
 
         # Tab 1: Touch visualizer with config
         touch_tab = TabbedPanelItem(text='Touch & Config')
-        touch_content = BoxLayout(orientation='horizontal', spacing=10, padding=10)
-        self.touch_vis = TouchVisualizer(size_hint_x=0.65)
-        self.config_panel = ConfigPanel(size_hint_x=0.35)
-        touch_content.add_widget(self.touch_vis)
-        touch_content.add_widget(self.config_panel)
+        touch_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
+
+        # Top: Load config button
+        config_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, spacing=10)
+        self.config_label = Label(text='No config loaded', size_hint_x=0.7, halign='left')
+        self.config_label.bind(size=self.config_label.setter('text_size'))
+        load_cfg_btn = Button(text='Load Config', size_hint_x=0.3)
+        load_cfg_btn.bind(on_press=self._on_load_config)
+        config_bar.add_widget(self.config_label)
+        config_bar.add_widget(load_cfg_btn)
+        touch_content.add_widget(config_bar)
+
+        # Main content: visualizer and sliders
+        main_content = BoxLayout(orientation='horizontal', spacing=10)
+        self.touch_vis = TouchVisualizer(size_hint_x=0.7)
+        self.config_panel = ConfigPanel(size_hint_x=0.3)
+        main_content.add_widget(self.touch_vis)
+        main_content.add_widget(self.config_panel)
+        touch_content.add_widget(main_content)
+
         touch_tab.add_widget(touch_content)
         self.tabs.add_widget(touch_tab)
 
@@ -205,8 +223,26 @@ class MainLayout(BoxLayout):
         chord_tab.add_widget(self.chord_map)
         self.tabs.add_widget(chord_tab)
 
+        # Tab 3: Cheat Sheet
+        cheatsheet_tab = TabbedPanelItem(text='Cheat Sheet')
+        self.cheatsheet = CheatSheetView()
+        cheatsheet_tab.add_widget(self.cheatsheet)
+        self.tabs.add_widget(cheatsheet_tab)
+
+        # Tab 4: Debug (GPIO diagnostics)
+        debug_tab = TabbedPanelItem(text='Debug')
+        debug_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        self.gpio_diag = GPIODiagnostics()
+        debug_content.add_widget(self.gpio_diag)
+        debug_content.add_widget(Label(text='GPIO diagnostics for Twiddler 4 button debugging'))
+        debug_tab.add_widget(debug_content)
+        self.tabs.add_widget(debug_tab)
+
         # Set default tab
         self.tabs.default_tab = touch_tab
+
+        # Loaded chord config (shared between views)
+        self._chord_config = None
 
         # Connection controls
         conn_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
@@ -235,6 +271,88 @@ class MainLayout(BoxLayout):
 
         # Scan for devices
         Clock.schedule_once(lambda dt: self._scan_devices(), 0.5)
+
+        # Try to auto-load default config
+        Clock.schedule_once(lambda dt: self._try_load_default_config(), 0.2)
+
+    def _try_load_default_config(self):
+        """Try to load a default config file on startup"""
+        # Look for config in common locations
+        search_paths = [
+            Path.cwd() / 'configs' / 'mirrorwalk_nomcc_fixed.cfg',
+            Path.cwd() / 'configs',
+            Path.home() / '.config' / 'nchorder',
+        ]
+        for path in search_paths:
+            if path.is_file():
+                self._load_config_file(str(path))
+                break
+            elif path.is_dir():
+                # Look for any .cfg file
+                cfgs = list(path.glob('*.cfg'))
+                if cfgs:
+                    self._load_config_file(str(cfgs[0]))
+                    break
+
+    def _on_load_config(self, instance):
+        """Show file chooser to load config"""
+        from kivy.uix.filechooser import FileChooserListView
+
+        content = BoxLayout(orientation='vertical')
+        chooser = FileChooserListView(
+            path=str(Path.cwd() / 'configs') if (Path.cwd() / 'configs').exists() else str(Path.home()),
+            filters=['*.cfg']
+        )
+        content.add_widget(chooser)
+
+        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
+
+        popup = Popup(
+            title='Load Chord Config',
+            content=content,
+            size_hint=(0.9, 0.9)
+        )
+
+        def do_load(btn):
+            if chooser.selection:
+                self._load_config_file(chooser.selection[0])
+            popup.dismiss()
+
+        def do_cancel(btn):
+            popup.dismiss()
+
+        from kivy.uix.button import Button as KButton
+        load_btn = KButton(text='Load')
+        load_btn.bind(on_press=do_load)
+        cancel_btn = KButton(text='Cancel')
+        cancel_btn.bind(on_press=do_cancel)
+
+        btn_row.add_widget(load_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
+
+        popup.open()
+
+    def _load_config_file(self, filepath: str):
+        """Load chord config file and update views"""
+        config = ChordConfig()
+        if config.load(filepath):
+            self._chord_config = config
+            self.config_label.text = f'Config: {Path(filepath).name} ({len(config.entries)} chords)'
+
+            # Update touch visualizer with config for live chord lookup
+            self.touch_vis.load_config(config)
+
+            # Also load into chord editor
+            self.chord_map._config = config
+            self.chord_map.chord_tree.config = config
+            self.chord_map.chord_tree.refresh()
+            self.chord_map.status_label.text = f'{Path(filepath).name} ({len(config.entries)} chords)'
+
+            # Load into cheat sheet
+            self.cheatsheet.load_config(config)
+        else:
+            self.config_label.text = 'Failed to load config'
 
     def _scan_devices(self, auto_connect=True):
         """Scan for connected devices and optionally auto-connect"""
@@ -329,6 +447,9 @@ class MainLayout(BoxLayout):
     def _on_touch_frame(self, frame: TouchFrame):
         """Handle incoming touch frame (called from background thread)"""
         self.touch_vis.update(frame)
+        # Update GPIO debug panel if in GPIO mode
+        if frame.is_gpio_driver():
+            self.gpio_diag.update(frame.get_gpio_diagnostics())
 
 
 class NChorderApp(App):
