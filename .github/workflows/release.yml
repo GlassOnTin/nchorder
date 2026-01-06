@@ -1,0 +1,343 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+env:
+  APP_NAME: nchorder-gui
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Build desktop apps with PyInstaller
+  build-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x86_64
+          - os: windows-latest
+            platform: windows
+            arch: x64
+          - os: macos-13
+            platform: macos
+            arch: x86_64
+          - os: macos-14
+            platform: macos
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Linux: Install system dependencies for Kivy
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
+            libmtdev-dev xclip xsel libxcursor-dev
+
+      # macOS: Install SDL2 dependencies
+      - name: Install macOS dependencies
+        if: matrix.platform == 'macos'
+        run: |
+          brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install kivy[base]==2.3.0
+          pip install pyserial
+          pip install -e .
+
+      - name: Build with PyInstaller (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          pyinstaller \
+            --name "${{ env.APP_NAME }}" \
+            --onefile \
+            --windowed \
+            --add-data "configs:configs" \
+            --hidden-import kivy.core.window.window_sdl2 \
+            --hidden-import kivy.core.text.text_sdl2 \
+            --hidden-import kivy.core.image.img_sdl2 \
+            --hidden-import kivy.core.audio.audio_sdl2 \
+            --hidden-import kivy.graphics.cgl \
+            main.py
+
+      - name: Build with PyInstaller (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          pyinstaller \
+            --name "${{ env.APP_NAME }}" \
+            --onefile \
+            --windowed \
+            --add-data "configs:configs" \
+            --hidden-import kivy.core.window.window_sdl2 \
+            --hidden-import kivy.core.text.text_sdl2 \
+            --hidden-import kivy.core.image.img_sdl2 \
+            --hidden-import kivy.core.audio.audio_sdl2 \
+            --hidden-import kivy.graphics.cgl \
+            main.py
+
+      - name: Build with PyInstaller (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # Convert PNG to ICO for Windows
+          pip install pillow
+          python -c "from PIL import Image; img = Image.open('firmware/include/icon.png'); img.save('icon.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (48,48), (32,32), (16,16)])"
+
+          pyinstaller `
+            --name "${{ env.APP_NAME }}" `
+            --onefile `
+            --windowed `
+            --icon icon.ico `
+            --add-data "configs;configs" `
+            --hidden-import kivy.core.window.window_sdl2 `
+            --hidden-import kivy.core.text.text_sdl2 `
+            --hidden-import kivy.core.image.img_sdl2 `
+            --hidden-import kivy.core.audio.audio_sdl2 `
+            --hidden-import kivy.graphics.cgl `
+            main.py
+
+      - name: Package artifact (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p release
+          mv dist/${{ env.APP_NAME }} release/${{ env.APP_NAME }}-linux-${{ matrix.arch }}
+          chmod +x release/${{ env.APP_NAME }}-linux-${{ matrix.arch }}
+
+      - name: Package artifact (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          mkdir -p release
+          # Create a simple .app bundle
+          APP_DIR="release/${{ env.APP_NAME }}-macos-${{ matrix.arch }}.app"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          mv dist/${{ env.APP_NAME }} "$APP_DIR/Contents/MacOS/"
+          # Create Info.plist
+          cat > "$APP_DIR/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>${{ env.APP_NAME }}</string>
+            <key>CFBundleIdentifier</key>
+            <string>org.nchorder.gui</string>
+            <key>CFBundleName</key>
+            <string>Northern Chorder</string>
+            <key>CFBundleVersion</key>
+            <string>${{ github.ref_name }}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+          </dict>
+          </plist>
+          EOF
+          # Zip the .app bundle
+          cd release
+          zip -r "${{ env.APP_NAME }}-macos-${{ matrix.arch }}.zip" "${{ env.APP_NAME }}-macos-${{ matrix.arch }}.app"
+          rm -rf "${{ env.APP_NAME }}-macos-${{ matrix.arch }}.app"
+
+      - name: Package artifact (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release
+          Move-Item "dist/${{ env.APP_NAME }}.exe" "release/${{ env.APP_NAME }}-windows-${{ matrix.arch }}.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/*
+          retention-days: 7
+
+  # Build Android APK with Buildozer
+  build-android:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            ffmpeg \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            zlib1g-dev \
+            openjdk-17-jdk \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            libltdl-dev \
+            libffi-dev \
+            unzip \
+            zip \
+            lld
+
+      - name: Install Buildozer and dependencies
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.36
+          pip install kivy==2.3.0
+
+      # Cache Android SDK/NDK
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-
+
+      - name: Build APK
+        run: |
+          # Set Java 17
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$PATH
+
+          # Build debug APK (release requires signing)
+          buildozer android debug 2>&1 | tee buildozer.log
+
+          # Check for APK
+          if [ -f bin/*.apk ]; then
+            echo "APK built successfully"
+          else
+            echo "APK build failed"
+            tail -100 buildozer.log
+            exit 1
+          fi
+
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          mv bin/*.apk release/${{ env.APP_NAME }}-android.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android
+          path: release/*.apk
+          retention-days: 7
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: buildozer.log
+          retention-days: 3
+
+  # Create GitHub Release
+  create-release:
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.apk" -o -name "${{ env.APP_NAME }}-linux-*" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Northern Chorder ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
+          files: release/*
+          body: |
+            ## Northern Chorder ${{ steps.version.outputs.version }}
+
+            Cross-platform GUI for nRF52840-based chorded keyboards.
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.exe` |
+            | macOS (Intel) | `${{ env.APP_NAME }}-macos-x86_64.zip` |
+            | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` |
+            | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` |
+            | Android | `${{ env.APP_NAME }}-android.apk` |
+
+            ### Installation
+
+            **Windows**: Run the `.exe` directly
+
+            **macOS**: Extract the `.zip` and drag the `.app` to Applications
+
+            **Linux**: Make executable with `chmod +x` and run
+
+            **Android**: Enable "Install from unknown sources" and install the APK
+
+            ### Notes
+
+            - Android requires USB OTG support for device connection
+            - First run may require allowing permissions for USB access
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

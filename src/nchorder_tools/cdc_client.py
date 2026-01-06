@@ -3,8 +3,13 @@ Northern Chorder - USB CDC Client
 
 Provides communication with the nChorder firmware via USB CDC serial.
 Supports configuration, touch streaming, and chord upload.
+
+Platform Support:
+- Desktop (Windows/Linux/macOS): Uses pyserial
+- Android: Uses usb4a/usbserial4a (requires USB host mode)
 """
 
+import os
 import struct
 import threading
 import time
@@ -12,11 +17,28 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Callable, Optional, List
 
-try:
-    import serial
-    import serial.tools.list_ports
-except ImportError:
-    serial = None
+# Platform detection
+_ANDROID = os.environ.get('NCHORDER_SERIAL_BACKEND') == 'android' or \
+           'ANDROID_STORAGE' in os.environ
+
+serial = None
+usb_serial = None
+
+if _ANDROID:
+    # Android: use usb4a/usbserial4a
+    try:
+        from usb4a import usb
+        from usbserial4a import serial4a
+        usb_serial = serial4a
+    except ImportError:
+        pass
+else:
+    # Desktop: use pyserial
+    try:
+        import serial
+        import serial.tools.list_ports
+    except ImportError:
+        pass
 
 
 class CDCCommand(IntEnum):
@@ -32,6 +54,11 @@ class CDCCommand(IntEnum):
     RESET_DEFAULT = 0x09
     STREAM_START = 0x10
     STREAM_STOP = 0x11
+    # Config upload commands (chunked transfer)
+    UPLOAD_START = 0x12
+    UPLOAD_DATA = 0x13
+    UPLOAD_COMMIT = 0x14
+    UPLOAD_ABORT = 0x15
 
 
 class CDCResponse(IntEnum):
@@ -55,45 +82,104 @@ class ConfigID(IntEnum):
 # Stream sync byte
 STREAM_SYNC = 0xAA
 
-# Touch frame size (21 bytes)
-TOUCH_FRAME_SIZE = 21
+# Touch frame size (71 bytes) - multitouch support
+# 1 sync + 6 thumb + 60 bars (3 bars * 5 touches * 4 bytes) + 4 buttons
+TOUCH_FRAME_SIZE = 71
+MAX_BAR_TOUCHES = 5
+
+
+@dataclass
+class BarTouch:
+    """Single touch on a bar sensor"""
+    pos: int    # Position (0xFFFF = no touch)
+    size: int   # Touch size/pressure
 
 
 @dataclass
 class TouchFrame:
     """Touch sensor data frame from streaming"""
-    thumb_x: int        # 0-3200
-    thumb_y: int        # 0-3200
-    thumb_size: int     # Touch pressure/size
-    bar0_pos: int       # Left column position
-    bar0_size: int
-    bar1_pos: int       # Middle column position
-    bar1_size: int
-    bar2_pos: int       # Right column position
-    bar2_size: int
-    buttons: int        # 16-bit button bitmask
+    thumb_x: int        # 0-1800 (or 0x1234 = GPIO driver marker)
+    thumb_y: int        # 0-1800 (or callback_count for GPIO)
+    thumb_size: int     # Touch pressure/size (or raw_buttons low 16)
+    bar0: list          # List of BarTouch (up to 5)
+    bar1: list          # List of BarTouch (up to 5)
+    bar2: list          # List of BarTouch (up to 5)
+    buttons: int        # 32-bit button bitmask (20 buttons used)
+    # Raw values for diagnostics (GPIO mode)
+    _raw_values: tuple = None
 
     @classmethod
     def from_bytes(cls, data: bytes) -> 'TouchFrame':
-        """Parse touch frame from 21-byte packet"""
+        """Parse touch frame from 71-byte packet"""
         if len(data) != TOUCH_FRAME_SIZE:
             raise ValueError(f"Expected {TOUCH_FRAME_SIZE} bytes, got {len(data)}")
         if data[0] != STREAM_SYNC:
             raise ValueError(f"Invalid sync byte: 0x{data[0]:02X}")
 
-        values = struct.unpack('<HHHHHHHHHH', data[1:])
-        return cls(
+        # Unpack all values: 3 thumb + 30 bar touches + 1 buttons (uint32)
+        values = struct.unpack('<HHH' + 'HH' * 15 + 'I', data[1:])
+
+        # Parse bar touches (5 per bar, pos+size each)
+        def parse_bar(start_idx):
+            touches = []
+            for i in range(MAX_BAR_TOUCHES):
+                pos = values[start_idx + i * 2]
+                size = values[start_idx + i * 2 + 1]
+                if pos != 0xFFFF:  # Valid touch
+                    touches.append(BarTouch(pos=pos, size=size))
+            return touches
+
+        frame = cls(
             thumb_x=values[0],
             thumb_y=values[1],
             thumb_size=values[2],
-            bar0_pos=values[3],
-            bar0_size=values[4],
-            bar1_pos=values[5],
-            bar1_size=values[6],
-            bar2_pos=values[7],
-            bar2_size=values[8],
-            buttons=values[9]
+            bar0=parse_bar(3),       # Starts at index 3
+            bar1=parse_bar(13),      # 3 + 10 (5 touches * 2 values)
+            bar2=parse_bar(23),      # 13 + 10
+            buttons=values[33],      # Last value (uint32)
+            _raw_values=values
         )
+        return frame
+
+    def is_gpio_driver(self) -> bool:
+        """Check if this frame is from GPIO driver (marker 0x1234)"""
+        return self.thumb_x == 0x1234
+
+    def get_gpio_diagnostics(self) -> dict:
+        """
+        Extract GPIO diagnostics from frame (only valid for GPIO driver).
+
+        Returns dict with:
+        - callback_count: Number of button callbacks
+        - raw_buttons: Current raw button state (before debounce)
+        - raw_p0: Raw NRF_P0->IN register value
+        - raw_p1: Raw NRF_P1->IN register value
+        - prev_raw_state: Previous raw button state
+        - debounce_count: Current debounce counter
+        """
+        if not self._raw_values or not self.is_gpio_driver():
+            return {}
+
+        v = self._raw_values
+        # Bar0[0]: P0 state, Bar0[1]: raw buttons high + debounce
+        # Bar1[0]: P1 state, Bar1[1]: prev raw state
+        p0_low = v[3]    # bar0[0].pos
+        p0_high = v[4]   # bar0[0].size
+        raw_btn_high = v[5]  # bar0[1].pos
+        debounce = v[6]  # bar0[1].size
+        p1_low = v[13]   # bar1[0].pos
+        p1_high = v[14]  # bar1[0].size
+        prev_low = v[15] # bar1[1].pos
+        prev_high = v[16] # bar1[1].size
+
+        return {
+            'callback_count': self.thumb_y,
+            'raw_buttons': (raw_btn_high << 16) | self.thumb_size,
+            'raw_p0': (p0_high << 16) | p0_low,
+            'raw_p1': (p1_high << 16) | p1_low,
+            'prev_raw_state': (prev_high << 16) | prev_low,
+            'debounce_count': debounce,
+        }
 
 
 @dataclass
@@ -170,27 +256,45 @@ class NChorderDevice:
             port: Serial port path (e.g., '/dev/ttyACM2').
                   If None, will auto-detect nChorder device.
         """
-        if serial is None:
+        if not _ANDROID and serial is None:
             raise ImportError("pyserial is required: pip install pyserial")
+        if _ANDROID and usb_serial is None:
+            raise ImportError("usbserial4a is required for Android")
 
         self._port_path = port
-        self._serial: Optional[serial.Serial] = None
+        self._serial = None
         self._streaming = False
         self._stream_thread: Optional[threading.Thread] = None
         self._stream_callback: Optional[Callable[[TouchFrame], None]] = None
         self._stop_event = threading.Event()
+        self._is_android = _ANDROID
 
     @classmethod
     def find_devices(cls) -> List[str]:
         """Find all connected nChorder devices."""
-        if serial is None:
-            return []
-
-        devices = []
-        for port in serial.tools.list_ports.comports():
-            if port.vid == cls.VID and port.pid == cls.PID:
-                devices.append(port.device)
-        return devices
+        if _ANDROID:
+            # Android: use usb4a to enumerate devices
+            if usb_serial is None:
+                return []
+            try:
+                from usb4a import usb
+                device_list = usb.get_usb_device_list()
+                devices = []
+                for device in device_list:
+                    if device.getVendorId() == cls.VID and device.getProductId() == cls.PID:
+                        devices.append(device.getDeviceName())
+                return devices
+            except Exception:
+                return []
+        else:
+            # Desktop: use pyserial
+            if serial is None:
+                return []
+            devices = []
+            for port in serial.tools.list_ports.comports():
+                if port.vid == cls.VID and port.pid == cls.PID:
+                    devices.append(port.device)
+            return devices
 
     def connect(self, timeout: float = 1.0) -> bool:
         """
@@ -202,7 +306,7 @@ class NChorderDevice:
         Returns:
             True if connection successful
         """
-        if self._serial and self._serial.is_open:
+        if self._serial and (not hasattr(self._serial, 'is_open') or self._serial.is_open):
             return True
 
         port = self._port_path
@@ -213,15 +317,31 @@ class NChorderDevice:
             port = devices[0]
 
         try:
-            self._serial = serial.Serial(
-                port=port,
-                baudrate=115200,  # Ignored for USB CDC
-                timeout=timeout,
-                write_timeout=timeout
-            )
+            if self._is_android:
+                # Android USB serial
+                from usb4a import usb
+                device = usb.get_usb_device(port)
+                if device is None:
+                    return False
+                self._serial = usb_serial.get_serial_port(
+                    port,
+                    baudrate=115200,
+                    timeout=timeout
+                )
+                if self._serial is None:
+                    return False
+                self._serial.open()
+            else:
+                # Desktop pyserial
+                self._serial = serial.Serial(
+                    port=port,
+                    baudrate=115200,  # Ignored for USB CDC
+                    timeout=timeout,
+                    write_timeout=timeout
+                )
             self._port_path = port
             return True
-        except serial.SerialException:
+        except Exception:
             return False
 
     def disconnect(self) -> None:
@@ -444,9 +564,89 @@ class NChorderDevice:
         response = self._send_command(CDCCommand.LOAD_FLASH)
         return response and len(response) >= 1 and response[0] == CDCResponse.ACK
 
+    # Config file upload
+
+    def upload_config(self, config_data: bytes, chunk_size: int = 60,
+                       save_to_flash: bool = True) -> bool:
+        """
+        Upload complete config file to device.
+
+        Uses chunked transfer protocol:
+        1. UPLOAD_START with total size
+        2. Multiple UPLOAD_DATA with chunks
+        3. UPLOAD_COMMIT to parse and activate
+        4. SAVE_FLASH to persist (optional, default True)
+
+        Args:
+            config_data: Raw binary config file (.cfg)
+            chunk_size: Bytes per chunk (max 63, default 60)
+            save_to_flash: If True, persist to flash after commit (default True)
+
+        Returns:
+            True if upload successful
+        """
+        if not self.is_connected():
+            return False
+
+        total_size = len(config_data)
+        if total_size == 0 or total_size > 4096:
+            return False
+
+        # Start upload
+        start_data = struct.pack('<H', total_size)
+        response = self._send_command(CDCCommand.UPLOAD_START, start_data)
+        if not response or response[0] != CDCResponse.ACK:
+            return False
+
+        # Send chunks
+        offset = 0
+        while offset < total_size:
+            chunk = config_data[offset:offset + chunk_size]
+            response = self._send_command(CDCCommand.UPLOAD_DATA, chunk)
+            if not response or response[0] != CDCResponse.ACK:
+                # Abort on error
+                self._send_command(CDCCommand.UPLOAD_ABORT)
+                return False
+            offset += len(chunk)
+
+        # Commit
+        response = self._send_command(CDCCommand.UPLOAD_COMMIT)
+        if not response or response[0] != CDCResponse.ACK:
+            return False
+
+        # Save to flash for persistence across power cycles
+        if save_to_flash:
+            return self.save_to_flash()
+
+        return True
+
+    def upload_config_file(self, filepath: str) -> bool:
+        """
+        Upload config file from disk.
+
+        Args:
+            filepath: Path to .cfg file
+
+        Returns:
+            True if upload successful
+        """
+        try:
+            with open(filepath, 'rb') as f:
+                config_data = f.read()
+            return self.upload_config(config_data)
+        except IOError:
+            return False
+
+    def abort_upload(self) -> bool:
+        """Abort any in-progress config upload."""
+        response = self._send_command(CDCCommand.UPLOAD_ABORT)
+        return response and len(response) >= 1 and response[0] == CDCResponse.ACK
+
 
 def main():
     """CLI test interface."""
+    import sys
+
     device = NChorderDevice()
 
     print("Looking for nChorder devices...")
@@ -456,25 +656,35 @@ def main():
         return
 
     print(f"Found: {devices}")
-    if device.connect():
-        print("Connected!")
+    if not device.connect():
+        print("Connection failed.")
+        return
 
-        version = device.get_version()
-        if version:
-            print(f"Firmware: {version}")
+    print("Connected!")
 
-        config = device.get_config()
-        if config:
-            print(f"Config: {config}")
+    version = device.get_version()
+    if version:
+        print(f"Firmware: {version}")
 
+    config = device.get_config()
+    if config:
+        print(f"Config: {config}")
+
+    # Check for config upload argument
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+        print(f"\nUploading config: {config_path}")
+        if device.upload_config_file(config_path):
+            print("Config uploaded successfully!")
+        else:
+            print("Config upload failed.")
+    else:
         # Test single touch read
         touch = device.get_touches()
         if touch:
             print(f"Touch: {touch}")
 
-        device.disconnect()
-    else:
-        print("Connection failed.")
+    device.disconnect()
 
 
 if __name__ == '__main__':
