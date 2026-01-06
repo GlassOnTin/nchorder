@@ -28,10 +28,7 @@ jobs:
           - os: windows-latest
             platform: windows
             arch: x64
-          - os: macos-13
-            platform: macos
-            arch: x86_64
-          - os: macos-14
+          - os: macos-latest
             platform: macos
             arch: arm64
 
@@ -53,9 +50,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
-            libmtdev-dev xclip xsel libxcursor-dev
+            libmtdev-dev xclip xsel
 
       # macOS: Install SDL2 dependencies
       - name: Install macOS dependencies
@@ -320,7 +315,6 @@ jobs:
             | Platform | File |
             |----------|------|
             | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.exe` |
-            | macOS (Intel) | `${{ env.APP_NAME }}-macos-x86_64.zip` |
             | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` |
             | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` |
             | Android | `${{ env.APP_NAME }}-android.apk` |
