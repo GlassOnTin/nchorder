@@ -60,12 +60,15 @@ SRC_FILES += \
   $(PROJ_DIR)/src/nchorder_chords.c \
   $(PROJ_DIR)/src/nchorder_buttons.c \
   $(PROJ_DIR)/src/nchorder_usb.c \
-  $(PROJ_DIR)/src/nchorder_msc.c \
-  $(PROJ_DIR)/src/nchorder_storage.c \
   $(PROJ_DIR)/src/nchorder_led.c \
   $(PROJ_DIR)/src/nchorder_i2c.c \
+  $(PROJ_DIR)/src/nchorder_cdc.c \
+  $(PROJ_DIR)/src/nchorder_flash.c \
+  $(PROJ_DIR)/src/nchorder_mouse.c \
+  $(PROJ_DIR)/src/nchorder_trill.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_i2s.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_wdt.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_twi.c \
   $(SDK_ROOT)/components/libraries/usbd/class/msc/app_usbd_msc.c \
   $(SDK_ROOT)/components/libraries/block_dev/empty/nrf_block_dev_empty.c \
@@ -107,6 +110,8 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/usbd/app_usbd_string_desc.c \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/app_usbd_hid.c \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/kbd/app_usbd_hid_kbd.c \
+  $(SDK_ROOT)/components/libraries/usbd/class/hid/mouse/app_usbd_hid_mouse.c \
+  $(SDK_ROOT)/components/libraries/usbd/class/cdc/acm/app_usbd_cdc_acm.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_usbd.c \
@@ -263,7 +268,7 @@ CFLAGS += $(OPT)
 CFLAGS += -DAPP_TIMER_V2
 CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
 CFLAGS += -DBOARD_PCA10056
-CFLAGS += -DBOARD_XIAO_NRF52840
+CFLAGS += -DBOARD_TWIDDLER4
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DNRF52840_XXAA

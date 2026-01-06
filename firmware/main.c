@@ -92,6 +92,7 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_delay.h"
 #include "nrf_drv_clock.h"
+#include "nrf_drv_wdt.h"
 
 // Twiddler custom firmware includes
 #include "nchorder_config.h"
@@ -172,6 +173,40 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
         for (volatile int j = 0; j < 500000; j++);
     }
     // Never returns - allows reading debug RAM via J-Link
+}
+
+// Watchdog channel handle
+static nrf_drv_wdt_channel_id m_wdt_channel_id;
+
+/**@brief Watchdog event handler - called just before reset */
+static void wdt_event_handler(void)
+{
+    // NOTE: This runs in interrupt context, keep it minimal
+    // The system will reset after this function returns
+    NRF_LOG_ERROR("Watchdog timeout - system will reset");
+    NRF_LOG_FLUSH();
+}
+
+/**@brief Initialize the watchdog timer */
+static void wdt_init(void)
+{
+    ret_code_t err_code;
+    nrf_drv_wdt_config_t config = NRF_DRV_WDT_DEAFULT_CONFIG;
+
+    err_code = nrf_drv_wdt_init(&config, wdt_event_handler);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = nrf_drv_wdt_channel_alloc(&m_wdt_channel_id);
+    APP_ERROR_CHECK(err_code);
+
+    nrf_drv_wdt_enable();
+    NRF_LOG_INFO("Watchdog enabled with %d ms timeout", config.reload_value);
+}
+
+/**@brief Feed the watchdog to prevent reset */
+static inline void wdt_feed(void)
+{
+    nrf_drv_wdt_channel_feed(m_wdt_channel_id);
 }
 
 #define SHIFT_BUTTON_ID                     1                                          /**< Button used as 'SHIFT' Key. */
@@ -2056,13 +2091,22 @@ static void send_single_key(uint8_t modifiers, uint8_t keycode)
     // Try USB first (wired connection takes priority)
     if (nchorder_usb_is_connected())
     {
+        NRF_LOG_INFO("USB: Sending mod=0x%02X key=0x%02X", modifiers, keycode);
         err_code = nchorder_usb_key_press(modifiers, keycode);
         if (err_code == NRF_SUCCESS)
         {
+            // Small delay to ensure USB host receives the press report
+            // before we send the release report
+            nrf_delay_ms(5);
+            NRF_LOG_INFO("USB: Key press OK, releasing");
             nchorder_usb_key_release();
             return;
         }
         NRF_LOG_WARNING("USB key send failed: %d", err_code);
+    }
+    else
+    {
+        NRF_LOG_INFO("USB: Not connected, using BLE");
     }
 
     // Fall back to BLE
@@ -2280,6 +2324,11 @@ static void nchorder_init(void)
         if (loaded > 0) {
             chord_load_config(flash_load_buffer, loaded);
             NRF_LOG_INFO("Twiddler: Loaded %d byte config from flash", loaded);
+            NRF_LOG_INFO("Twiddler: key=%d mouse=%d multi=%d consumer=%d",
+                         chord_get_mapping_count(),
+                         chord_get_mouse_mapping_count(),
+                         chord_get_multichar_count(),
+                         chord_get_consumer_count());
         }
     }
 
@@ -2376,6 +2425,7 @@ int main(void)
 
     scheduler_init();  // Must be before timers_init when APP_TIMER_CONFIG_USE_SCHEDULER=1
     timers_init();
+    wdt_init();  // Initialize watchdog (5 second timeout)
     buttons_leds_init(&erase_bonds);
     power_management_init();
     ble_stack_init();
@@ -2445,6 +2495,8 @@ int main(void)
     // Enter main loop.
     for (;;)
     {
+        wdt_feed();  // Keep watchdog happy - resets if main loop stalls for >5s
+
 #if NRF_BLE_LESC_ENABLED
         nrf_ble_lesc_request_handler();  // Process LESC requests
 #endif

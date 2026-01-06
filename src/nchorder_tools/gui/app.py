@@ -27,6 +27,7 @@ from pathlib import Path
 from .touch_view import TouchVisualizer, GPIODiagnostics
 from .chord_view import ChordMapView, ChordConfig
 from .cheatsheet_view import CheatSheetView
+from .exercise_view import ExerciseView
 from ..cdc_client import NChorderDevice, TouchFrame, ConfigID
 
 
@@ -230,7 +231,13 @@ class MainLayout(BoxLayout):
         cheatsheet_tab.add_widget(self.cheatsheet)
         self.tabs.add_widget(cheatsheet_tab)
 
-        # Tab 5: Debug (GPIO diagnostics)
+        # Tab 5: Exercise mode
+        exercise_tab = TabbedPanelItem(text='Exercise')
+        self.exercise = ExerciseView()
+        exercise_tab.add_widget(self.exercise)
+        self.tabs.add_widget(exercise_tab)
+
+        # Tab 6: Debug (GPIO diagnostics)
         debug_tab = TabbedPanelItem(text='Debug')
         debug_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
         self.gpio_diag = GPIODiagnostics()
@@ -332,6 +339,9 @@ class MainLayout(BoxLayout):
 
             # Load into cheat sheet
             self.cheatsheet.load_config(config)
+
+            # Load into exercise mode
+            self.exercise.load_config(config)
         else:
             self.config_label.text = 'Failed to load config'
 
@@ -385,6 +395,8 @@ class MainLayout(BoxLayout):
         # Update GPIO debug panel if in GPIO mode
         if frame.is_gpio_driver():
             self.gpio_diag.update(frame.get_gpio_diagnostics())
+        # Route chord events to exercise view
+        self.exercise.on_chord_event(frame.buttons)
 
 
 class NChorderApp(App):
