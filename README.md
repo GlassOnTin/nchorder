@@ -2,9 +2,42 @@
 
 Open-source firmware and tools for nRF52840-based chorded keyboards.
 
+## Quick Start - GUI App
+
+Pre-built apps are available for all platforms:
+
+| Platform | Download | Install |
+|----------|----------|---------|
+| **Windows** | [nchorder-gui-windows-x64.zip](https://github.com/GlassOnTin/nchorder/releases/latest) | Extract zip, run `nchorder-gui.exe` |
+| **macOS** | [nchorder-gui-macos-arm64.zip](https://github.com/GlassOnTin/nchorder/releases/latest) | Extract, move .app to Applications |
+| **Linux** | [nchorder-gui-linux-x86_64](https://github.com/GlassOnTin/nchorder/releases/latest) | `chmod +x` and run |
+| **Android** | [nchorder-gui-android.apk](https://github.com/GlassOnTin/nchorder/releases/latest) | Install APK, allow unknown sources |
+
+### What You Can Do
+
+The GUI works standalone (no keyboard required) for:
+
+- **Cheat Sheet** - Visual reference for all chords in your layout, organized by category
+- **Exercise Mode** - Practice chords with scrolling prompts and real-time feedback
+- **Chord Editor** - Browse and modify chord mappings
+
+With a keyboard connected via USB:
+
+- **Touch Visualizer** - Real-time display of button states and detected chords
+- **Config Tuning** - Adjust thresholds, debounce, and mouse settings with live sliders
+- **Debug View** - GPIO diagnostics for hardware troubleshooting
+
+### Included Layouts
+
+The app bundles community chord layouts in the `configs/` folder:
+
+- **MirrorWalk** - Efficient layout optimized for English text (by Griatch)
+- **TabSpace** - Alternative layout with different finger assignments
+
 ## Overview
 
 This project provides:
+- **Cross-platform GUI** for configuration, practice, and visualization
 - **Firmware** for nRF52840-based chorded keyboards (BLE + USB HID)
 - **Python tools** for config file management, conversion, and analysis
 - **Community layouts** including MirrorWalk and variants
@@ -14,6 +47,7 @@ This project provides:
 
 | Component | Status |
 |-----------|--------|
+| Cross-platform GUI | Working (Win/Mac/Linux/Android) |
 | BLE HID keyboard | Working |
 | USB HID keyboard | Working |
 | Config file loading (FDS) | Working |
