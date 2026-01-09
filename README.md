@@ -55,8 +55,8 @@ This project provides:
 | Chord detection (16 buttons) | Working |
 | Python tools (79 tests) | Working |
 | Consumer control (media keys) | Not implemented |
-| RGB LEDs | Not implemented |
-| Optical sensor (mouse) | Not implemented |
+| RGB LEDs | Working |
+| Optical sensor (mouse) | Working |
 
 ## Supported Hardware
 
