@@ -62,7 +62,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install kivy[base]==2.3.0
+          pip install "kivy[base]==2.3.0"
           pip install pyserial
           pip install -e .
 
@@ -74,11 +74,7 @@ jobs:
             --onefile \
             --windowed \
             --add-data "configs:configs" \
-            --hidden-import kivy.core.window.window_sdl2 \
-            --hidden-import kivy.core.text.text_sdl2 \
-            --hidden-import kivy.core.image.img_sdl2 \
-            --hidden-import kivy.core.audio.audio_sdl2 \
-            --hidden-import kivy.graphics.cgl \
+            --collect-submodules kivy \
             main.py
 
       - name: Build with PyInstaller (macOS)
@@ -89,35 +85,63 @@ jobs:
             --onefile \
             --windowed \
             --add-data "configs:configs" \
-            --hidden-import kivy.core.window.window_sdl2 \
-            --hidden-import kivy.core.text.text_sdl2 \
-            --hidden-import kivy.core.image.img_sdl2 \
-            --hidden-import kivy.core.audio.audio_sdl2 \
-            --hidden-import kivy.graphics.cgl \
+            --collect-submodules kivy \
             main.py
 
+      # Windows: Use folder mode (faster) then zip - following Kivy best practices
       - name: Build with PyInstaller (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
-        timeout-minutes: 45
+        timeout-minutes: 30
         run: |
-          # Install kivy_deps for pre-built SDL2/GLEW binaries
-          pip install kivy_deps.sdl2 kivy_deps.glew
-          pip install pillow
+          # Create a minimal PyInstaller spec that follows Kivy documentation
+          # Using folder mode is much faster than onefile on Windows
 
-          # Try to convert PNG to ICO for Windows (optional - continue on failure)
-          $iconArg = ""
-          try {
-            python -c "from PIL import Image; img = Image.open('firmware/include/icon.png'); img.save('icon.ico', format='ICO', sizes=[(256,256), (64,64), (32,32), (16,16)])"
-            if (Test-Path icon.ico) { $iconArg = "--icon icon.ico" }
-          } catch {
-            Write-Host "Warning: Could not convert icon, building without icon"
-          }
+          @"
+          # -*- mode: python ; coding: utf-8 -*-
+          from kivy_deps import sdl2, glew
 
-          # Simple PyInstaller build - let it auto-detect imports
-          $cmd = "pyinstaller --name `"${{ env.APP_NAME }}`" --onefile --windowed $iconArg --add-data `"configs;configs`" main.py"
-          Write-Host "Running: $cmd"
-          Invoke-Expression $cmd
+          a = Analysis(
+              ['main.py'],
+              pathex=[],
+              binaries=[],
+              datas=[('configs', 'configs')],
+              hiddenimports=['kivy.core.window.window_sdl2', 'kivy.core.text.text_sdl2'],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=['tkinter', 'matplotlib'],
+              noarchive=False,
+          )
+          pyz = PYZ(a.pure)
+
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='${{ env.APP_NAME }}',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=False,
+              console=False,
+              disable_windowed_traceback=False,
+          )
+
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.datas,
+              *[Tree(p) for p in (sdl2.dep_bins + glew.dep_bins)],
+              strip=False,
+              upx=False,
+              name='${{ env.APP_NAME }}',
+          )
+          "@ | Out-File -FilePath nchorder.spec -Encoding utf8
+
+          # Build using the spec file
+          pyinstaller nchorder.spec
 
       - name: Package artifact (Linux)
         if: matrix.platform == 'linux'
@@ -130,41 +154,37 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           mkdir -p release
-          # Create a simple .app bundle
           APP_DIR="release/${{ env.APP_NAME }}-macos-${{ matrix.arch }}.app"
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
           mv dist/${{ env.APP_NAME }} "$APP_DIR/Contents/MacOS/"
-          # Create Info.plist
-          cat > "$APP_DIR/Contents/Info.plist" << EOF
+          cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>CFBundleExecutable</key>
-            <string>${{ env.APP_NAME }}</string>
+            <string>nchorder-gui</string>
             <key>CFBundleIdentifier</key>
             <string>org.nchorder.gui</string>
             <key>CFBundleName</key>
             <string>Northern Chorder</string>
-            <key>CFBundleVersion</key>
-            <string>${{ github.ref_name }}</string>
             <key>CFBundlePackageType</key>
             <string>APPL</string>
           </dict>
           </plist>
           EOF
-          # Zip the .app bundle
           cd release
           zip -r "${{ env.APP_NAME }}-macos-${{ matrix.arch }}.zip" "${{ env.APP_NAME }}-macos-${{ matrix.arch }}.app"
           rm -rf "${{ env.APP_NAME }}-macos-${{ matrix.arch }}.app"
 
+      # Windows: Zip the folder output
       - name: Package artifact (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release
-          Move-Item "dist/${{ env.APP_NAME }}.exe" "release/${{ env.APP_NAME }}-windows-${{ matrix.arch }}.exe"
+          Compress-Archive -Path "dist/${{ env.APP_NAME }}" -DestinationPath "release/${{ env.APP_NAME }}-windows-${{ matrix.arch }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -173,20 +193,64 @@ jobs:
           path: release/*
           retention-days: 7
 
-  # Build Android APK with Buildozer
+  # Build Android APK - following official Kivy/Buildozer pattern
   build-android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
+    env:
+      PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build APK with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@master
-        id: buildozer
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          command: buildozer android debug
-          buildozer_version: master
+          python-version: '3.11'
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            automake \
+            autoconf \
+            libtool \
+            libltdl-dev \
+            libffi-dev \
+            zip \
+            unzip
+
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython
+
+      - name: Build APK
+        timeout-minutes: 60
+        run: |
+          # Use existing buildozer.spec
+          # Accept SDK license
+          sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec || true
+
+          # Build debug APK
+          buildozer -v android debug 2>&1 | tee buildozer.log
+
+          # Check for APK
+          if ls bin/*.apk 1> /dev/null 2>&1; then
+            echo "APK built successfully"
+            ls -la bin/
+          else
+            echo "APK build failed - showing last 200 lines of log:"
+            tail -200 buildozer.log
+            exit 1
+          fi
 
       - name: Rename APK
         run: |
@@ -200,10 +264,18 @@ jobs:
           path: release/*.apk
           retention-days: 7
 
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: buildozer.log
+          retention-days: 3
+
   # Create GitHub Release
   create-release:
     needs: [build-desktop, build-android]
-    if: always()  # Run even if some builds fail
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -216,12 +288,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
 
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Copy whatever artifacts exist (some builds may have failed)
-          find artifacts -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.apk" -o -name "${{ env.APP_NAME }}-linux-*" \) -exec cp {} release/ \; || true
+          find artifacts -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.apk" -o -name "${{ env.APP_NAME }}-linux-*" \) -exec cp {} release/ \; 2>/dev/null || true
           echo "Available artifacts:"
           ls -la release/ || echo "No release artifacts found"
 
@@ -229,7 +301,6 @@ jobs:
         id: check
         run: |
           if [ -z "$(ls -A release 2>/dev/null)" ]; then
-            echo "No artifacts to release"
             echo "has_artifacts=false" >> $GITHUB_OUTPUT
           else
             echo "has_artifacts=true" >> $GITHUB_OUTPUT
@@ -260,22 +331,26 @@ jobs:
 
             ### Downloads
 
-            | Platform | File | Status |
-            |----------|------|--------|
-            | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` | Available |
-            | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` | Available |
-            | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.exe` | Build in progress |
-            | Android | `${{ env.APP_NAME }}-android.apk` | Build in progress |
+            | Platform | File |
+            |----------|------|
+            | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` |
+            | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` |
+            | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.zip` |
+            | Android | `${{ env.APP_NAME }}-android.apk` |
 
             ### Installation
 
-            **macOS**: Extract the `.zip` and drag the `.app` to Applications
+            **Linux**: `chmod +x nchorder-gui-linux-x86_64 && ./nchorder-gui-linux-x86_64`
 
-            **Linux**: Make executable with `chmod +x` and run
+            **macOS**: Extract zip, move .app to Applications
+
+            **Windows**: Extract zip, run `nchorder-gui.exe` from the folder
+
+            **Android**: Enable "Install from unknown sources", install APK
 
             ### Notes
 
-            - Windows and Android builds are still being worked on
-            - First run may require allowing permissions for USB access
+            - Android requires USB OTG for device connection
+            - Windows build is a folder (not single exe) for faster startup
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
