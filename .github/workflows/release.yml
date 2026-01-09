@@ -99,23 +99,17 @@ jobs:
       - name: Build with PyInstaller (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
+        timeout-minutes: 30
         run: |
-          # Convert PNG to ICO for Windows
+          # Install kivy_deps for pre-built SDL2/GLEW binaries
+          pip install kivy_deps.sdl2 kivy_deps.glew
           pip install pillow
-          python -c "from PIL import Image; img = Image.open('firmware/include/icon.png'); img.save('icon.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (48,48), (32,32), (16,16)])"
 
-          pyinstaller `
-            --name "${{ env.APP_NAME }}" `
-            --onefile `
-            --windowed `
-            --icon icon.ico `
-            --add-data "configs;configs" `
-            --hidden-import kivy.core.window.window_sdl2 `
-            --hidden-import kivy.core.text.text_sdl2 `
-            --hidden-import kivy.core.image.img_sdl2 `
-            --hidden-import kivy.core.audio.audio_sdl2 `
-            --hidden-import kivy.graphics.cgl `
-            main.py
+          # Convert PNG to ICO for Windows
+          python -c "from PIL import Image; img = Image.open('firmware/include/icon.png'); img.save('icon.ico', format='ICO', sizes=[(256,256), (64,64), (32,32), (16,16)])"
+
+          # Simple PyInstaller build - let it auto-detect imports
+          pyinstaller --name "${{ env.APP_NAME }}" --onefile --windowed --icon icon.ico --add-data "configs;configs" main.py
 
       - name: Package artifact (Linux)
         if: matrix.platform == 'linux'
@@ -173,78 +167,18 @@ jobs:
 
   # Build Android APK with Buildozer
   build-android:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Build APK with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            git \
-            ffmpeg \
-            libsdl2-dev \
-            libsdl2-image-dev \
-            libsdl2-mixer-dev \
-            libsdl2-ttf-dev \
-            libportmidi-dev \
-            libswscale-dev \
-            libavformat-dev \
-            libavcodec-dev \
-            zlib1g-dev \
-            openjdk-17-jdk \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            libltdl-dev \
-            libffi-dev \
-            unzip \
-            zip \
-            lld
-
-      - name: Install Buildozer and dependencies
-        run: |
-          pip install --upgrade pip
-          pip install buildozer cython==0.29.36
-          pip install kivy==2.3.0
-
-      # Cache Android SDK/NDK
-      - name: Cache Buildozer
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer
-            .buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-
-
-      - name: Build APK
-        run: |
-          # Set Java 17
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$PATH
-
-          # Build debug APK (release requires signing)
-          buildozer android debug 2>&1 | tee buildozer.log
-
-          # Check for APK
-          if [ -f bin/*.apk ]; then
-            echo "APK built successfully"
-          else
-            echo "APK build failed"
-            tail -100 buildozer.log
-            exit 1
-          fi
+          command: buildozer android debug
+          buildozer_version: stable
 
       - name: Rename APK
         run: |
@@ -257,14 +191,6 @@ jobs:
           name: ${{ env.APP_NAME }}-android
           path: release/*.apk
           retention-days: 7
-
-      - name: Upload build log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: buildozer-log
-          path: buildozer.log
-          retention-days: 3
 
   # Create GitHub Release
   create-release:

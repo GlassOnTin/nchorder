@@ -16,7 +16,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,cfg
 
 # (list) List of inclusions using pattern matching
-source.include_patterns = src/**,configs/*.cfg
+source.include_patterns = main.py,src/**,configs/*.cfg
 
 # (list) Source files to exclude (let empty to not exclude anything)
 source.exclude_exts = spec
@@ -31,8 +31,8 @@ source.exclude_patterns = license,images/*/*.jpg
 version = 0.1.0
 
 # (list) Application requirements
-# Note: pyserial replaced with usb4a for Android USB host support
-requirements = python3,kivy==2.3.0,usb4a,usbserial4a
+# Note: USB serial support optional - usb4a/usbserial4a can be added for Android USB host
+requirements = python3,kivy==2.3.0,pyserial
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
