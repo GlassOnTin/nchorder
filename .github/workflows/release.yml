@@ -99,17 +99,25 @@ jobs:
       - name: Build with PyInstaller (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: |
           # Install kivy_deps for pre-built SDL2/GLEW binaries
           pip install kivy_deps.sdl2 kivy_deps.glew
           pip install pillow
 
-          # Convert PNG to ICO for Windows
-          python -c "from PIL import Image; img = Image.open('firmware/include/icon.png'); img.save('icon.ico', format='ICO', sizes=[(256,256), (64,64), (32,32), (16,16)])"
+          # Try to convert PNG to ICO for Windows (optional - continue on failure)
+          $iconArg = ""
+          try {
+            python -c "from PIL import Image; img = Image.open('firmware/include/icon.png'); img.save('icon.ico', format='ICO', sizes=[(256,256), (64,64), (32,32), (16,16)])"
+            if (Test-Path icon.ico) { $iconArg = "--icon icon.ico" }
+          } catch {
+            Write-Host "Warning: Could not convert icon, building without icon"
+          }
 
           # Simple PyInstaller build - let it auto-detect imports
-          pyinstaller --name "${{ env.APP_NAME }}" --onefile --windowed --icon icon.ico --add-data "configs;configs" main.py
+          $cmd = "pyinstaller --name `"${{ env.APP_NAME }}`" --onefile --windowed $iconArg --add-data `"configs;configs`" main.py"
+          Write-Host "Running: $cmd"
+          Invoke-Expression $cmd
 
       - name: Package artifact (Linux)
         if: matrix.platform == 'linux'
@@ -174,11 +182,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build APK with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+        uses: ArtemSBulgakov/buildozer-action@master
         id: buildozer
         with:
           command: buildozer android debug
-          buildozer_version: stable
+          buildozer_version: master
 
       - name: Rename APK
         run: |
