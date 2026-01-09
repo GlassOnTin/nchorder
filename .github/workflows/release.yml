@@ -203,6 +203,7 @@ jobs:
   # Create GitHub Release
   create-release:
     needs: [build-desktop, build-android]
+    if: always()  # Run even if some builds fail
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -219,8 +220,20 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.apk" -o -name "${{ env.APP_NAME }}-linux-*" \) -exec cp {} release/ \;
-          ls -la release/
+          # Copy whatever artifacts exist (some builds may have failed)
+          find artifacts -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.apk" -o -name "${{ env.APP_NAME }}-linux-*" \) -exec cp {} release/ \; || true
+          echo "Available artifacts:"
+          ls -la release/ || echo "No release artifacts found"
+
+      - name: Check for artifacts
+        id: check
+        run: |
+          if [ -z "$(ls -A release 2>/dev/null)" ]; then
+            echo "No artifacts to release"
+            echo "has_artifacts=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_artifacts=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Get version
         id: version
@@ -232,6 +245,7 @@ jobs:
           fi
 
       - name: Create Release
+        if: steps.check.outputs.has_artifacts == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
@@ -246,26 +260,22 @@ jobs:
 
             ### Downloads
 
-            | Platform | File |
-            |----------|------|
-            | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.exe` |
-            | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` |
-            | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` |
-            | Android | `${{ env.APP_NAME }}-android.apk` |
+            | Platform | File | Status |
+            |----------|------|--------|
+            | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` | Available |
+            | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` | Available |
+            | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.exe` | Build in progress |
+            | Android | `${{ env.APP_NAME }}-android.apk` | Build in progress |
 
             ### Installation
-
-            **Windows**: Run the `.exe` directly
 
             **macOS**: Extract the `.zip` and drag the `.app` to Applications
 
             **Linux**: Make executable with `chmod +x` and run
 
-            **Android**: Enable "Install from unknown sources" and install the APK
-
             ### Notes
 
-            - Android requires USB OTG support for device connection
+            - Windows and Android builds are still being worked on
             - First run may require allowing permissions for USB access
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
