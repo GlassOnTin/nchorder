@@ -174,8 +174,14 @@ jobs:
           path: release/*
           retention-days: 7
 
-  # Build Android APK - following official Kivy/Buildozer pattern
+  # Build Android APK - TEMPORARILY DISABLED
+  # Issue: python-for-android's python3 recipe requires libuuid which isn't on Android NDK
+  # The _uuid module fails to link. Need to either:
+  # 1. Fork p4a and patch python3 recipe to pass --disable-uuid to configure
+  # 2. Create a complete local python3 recipe with all patches
+  # 3. Wait for upstream p4a fix
   build-android:
+    if: false  # Temporarily disabled - see comment above
     runs-on: ubuntu-22.04
 
     env:
@@ -324,7 +330,6 @@ jobs:
             | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` |
             | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` |
             | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.zip` |
-            | Android | `${{ env.APP_NAME }}-android.apk` |
 
             ### Installation
 
@@ -334,11 +339,9 @@ jobs:
 
             **Windows**: Extract zip, run `nchorder-gui.exe` from the folder
 
-            **Android**: Enable "Install from unknown sources", install APK
-
             ### Notes
 
-            - Android requires USB OTG for device connection
             - Windows build is a folder (not single exe) for faster startup
+            - Android APK: Coming in a future release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
