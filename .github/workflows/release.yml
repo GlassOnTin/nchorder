@@ -74,7 +74,6 @@ jobs:
             --onefile \
             --windowed \
             --add-data "configs:configs" \
-            --collect-submodules kivy \
             main.py
 
       - name: Build with PyInstaller (macOS)
@@ -85,7 +84,6 @@ jobs:
             --onefile \
             --windowed \
             --add-data "configs:configs" \
-            --collect-submodules kivy \
             main.py
 
       # Windows: Use folder mode (faster) then zip - following Kivy best practices
