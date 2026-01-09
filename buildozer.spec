@@ -86,7 +86,8 @@ android.presplash_color = #2E7D32
 android.permissions = INTERNET,USB_HOST
 
 # (list) features (adds uses-feature -tags to manifest)
-android.features = android.hardware.usb.host
+# Note: android.features not supported by p4a toolchain, use manifest template instead
+#android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
 android.api = 33
