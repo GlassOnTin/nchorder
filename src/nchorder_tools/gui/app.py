@@ -24,7 +24,7 @@ from kivy.properties import ObjectProperty, BooleanProperty, StringProperty
 
 from pathlib import Path
 
-from .touch_view import TouchVisualizer, GPIODiagnostics
+from .touch_view import TouchVisualizer
 from .chord_view import ChordMapView, ChordConfig
 from .cheatsheet_view import CheatSheetView
 from .exercise_view import ExerciseView
@@ -174,14 +174,62 @@ class ConfigPanel(BoxLayout):
             self.sliders['volume_sensitivity'].value = config.volume_sensitivity
 
 
+class ConnectionOverlay(BoxLayout):
+    """Overlay shown when no device is connected"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.padding = 20
+        self.spacing = 10
+
+        # Center content vertically
+        self.add_widget(BoxLayout())  # Spacer
+
+        content = BoxLayout(orientation='vertical', size_hint_y=None, height=200, spacing=15)
+
+        title = Label(
+            text='No Keyboard Connected',
+            font_size='20sp',
+            bold=True,
+            size_hint_y=None,
+            height=40
+        )
+        content.add_widget(title)
+
+        instructions = Label(
+            text='Connect your nChorder or Twiddler via USB\nto use Touch and Config features.\n\n'
+                 'Cheat Sheet and Exercise modes work\nwithout a keyboard connected.',
+            font_size='14sp',
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=120
+        )
+        instructions.bind(size=instructions.setter('text_size'))
+        content.add_widget(instructions)
+
+        self.status_label = Label(
+            text='Searching for devices...',
+            font_size='12sp',
+            color=(0.6, 0.6, 0.6, 1),
+            size_hint_y=None,
+            height=30
+        )
+        content.add_widget(self.status_label)
+
+        self.add_widget(content)
+        self.add_widget(BoxLayout())  # Spacer
+
+
 class MainLayout(BoxLayout):
     """Main application layout"""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.padding = 10
-        self.spacing = 10
+        self.padding = 5
+        self.spacing = 5
 
         # Device
         self.device = None
@@ -190,23 +238,26 @@ class MainLayout(BoxLayout):
         # Tabbed panel for different views
         self.tabs = TabbedPanel(do_default_tab=False, tab_pos='top_left')
 
-        # Tab 1: Touch visualizer
+        # Tab 1: Touch visualizer (with connection overlay)
         touch_tab = TabbedPanelItem(text='Touch')
-        touch_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
+        self.touch_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
         self.touch_vis = TouchVisualizer()
-        touch_content.add_widget(self.touch_vis)
-        touch_tab.add_widget(touch_content)
+        self.connection_overlay = ConnectionOverlay()
+        # Start with overlay visible
+        self.touch_content.add_widget(self.connection_overlay)
+        touch_tab.add_widget(self.touch_content)
         self.tabs.add_widget(touch_tab)
+        self._touch_tab = touch_tab
 
-        # Tab 2: Device Config (sliders)
-        config_tab = TabbedPanelItem(text='Config')
+        # Tab 2: Device Config (sliders) - shorter name for mobile
+        config_tab = TabbedPanelItem(text='Tune')
         config_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
 
         # Load config button at top
         config_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, spacing=10)
-        self.config_label = Label(text='No config loaded', size_hint_x=0.7, halign='left')
+        self.config_label = Label(text='No config', size_hint_x=0.6, halign='left', font_size='13sp')
         self.config_label.bind(size=self.config_label.setter('text_size'))
-        load_cfg_btn = Button(text='Load Config', size_hint_x=0.3)
+        load_cfg_btn = Button(text='Load', size_hint_x=0.4)
         load_cfg_btn.bind(on_press=self._on_load_config)
         config_bar.add_widget(self.config_label)
         config_bar.add_widget(load_cfg_btn)
@@ -219,35 +270,36 @@ class MainLayout(BoxLayout):
         config_tab.add_widget(config_content)
         self.tabs.add_widget(config_tab)
 
-        # Tab 3: Chord layout editor
-        chord_tab = TabbedPanelItem(text='Chord Editor')
+        # Tab 3: Chord layout editor - shorter name
+        chord_tab = TabbedPanelItem(text='Chords')
         self.chord_map = ChordMapView()
         chord_tab.add_widget(self.chord_map)
         self.tabs.add_widget(chord_tab)
 
-        # Tab 4: Cheat Sheet
-        cheatsheet_tab = TabbedPanelItem(text='Cheat Sheet')
+        # Tab 4: Cheat Sheet - shorter name
+        cheatsheet_tab = TabbedPanelItem(text='Cheat')
         self.cheatsheet = CheatSheetView()
         cheatsheet_tab.add_widget(self.cheatsheet)
         self.tabs.add_widget(cheatsheet_tab)
 
-        # Tab 5: Exercise mode
-        exercise_tab = TabbedPanelItem(text='Exercise')
+        # Tab 5: Exercise mode - shorter name
+        exercise_tab = TabbedPanelItem(text='Learn')
         self.exercise = ExerciseView()
         exercise_tab.add_widget(self.exercise)
         self.tabs.add_widget(exercise_tab)
 
+        # Debug tab removed from mobile - too technical for end users
         # Tab 6: Debug (GPIO diagnostics)
-        debug_tab = TabbedPanelItem(text='Debug')
-        debug_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        self.gpio_diag = GPIODiagnostics()
-        debug_content.add_widget(self.gpio_diag)
-        debug_content.add_widget(Label(text='GPIO diagnostics for Twiddler 4 button debugging'))
-        debug_tab.add_widget(debug_content)
-        self.tabs.add_widget(debug_tab)
+        # debug_tab = TabbedPanelItem(text='Debug')
+        # debug_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        # self.gpio_diag = GPIODiagnostics()
+        # debug_content.add_widget(self.gpio_diag)
+        # debug_content.add_widget(Label(text='GPIO diagnostics'))
+        # debug_tab.add_widget(debug_content)
+        # self.tabs.add_widget(debug_tab)
 
-        # Set default tab
-        self.tabs.default_tab = touch_tab
+        # Set default tab to Cheat Sheet (works without device)
+        self.tabs.default_tab = cheatsheet_tab
 
         # Loaded chord config (shared between views)
         self._chord_config = None
@@ -262,6 +314,18 @@ class MainLayout(BoxLayout):
 
         # Try to auto-load default config
         Clock.schedule_once(lambda dt: self._try_load_default_config(), 0.2)
+
+    def _show_touch_visualizer(self):
+        """Switch from connection overlay to touch visualizer"""
+        if self.connection_overlay.parent:
+            self.touch_content.remove_widget(self.connection_overlay)
+            self.touch_content.add_widget(self.touch_vis)
+
+    def _show_connection_overlay(self):
+        """Switch from touch visualizer to connection overlay"""
+        if self.touch_vis.parent:
+            self.touch_content.remove_widget(self.touch_vis)
+            self.touch_content.add_widget(self.connection_overlay)
 
     def _try_load_default_config(self):
         """Try to load a default config file on startup"""
@@ -354,6 +418,9 @@ class MainLayout(BoxLayout):
         if devices:
             self.device = NChorderDevice(devices[0])
             if self.device.connect():
+                # Show touch visualizer (hide overlay)
+                self._show_touch_visualizer()
+
                 # Load device config
                 self.config_panel.device = self.device
                 self.config_panel.load_from_device()
@@ -363,15 +430,21 @@ class MainLayout(BoxLayout):
 
                 # Auto-start streaming
                 self._start_stream()
+        else:
+            # No devices found - update overlay status
+            self.connection_overlay.status_label.text = 'No devices found. Searching...'
 
     def _check_connection(self):
         """Periodically check connection and reconnect if needed"""
         if self.device and self.device.is_connected():
             return  # Still connected
 
-        # Lost connection or not connected - try to reconnect
+        # Lost connection - show overlay
         if self._streaming:
             self._streaming = False
+            self._show_connection_overlay()
+            self.connection_overlay.status_label.text = 'Connection lost. Reconnecting...'
+
         self._auto_connect()
 
     def _start_stream(self):
@@ -392,9 +465,6 @@ class MainLayout(BoxLayout):
     def _on_touch_frame(self, frame: TouchFrame):
         """Handle incoming touch frame (called from background thread)"""
         self.touch_vis.update(frame)
-        # Update GPIO debug panel if in GPIO mode
-        if frame.is_gpio_driver():
-            self.gpio_diag.update(frame.get_gpio_diagnostics())
         # Route chord events to exercise view
         self.exercise.on_chord_event(frame.buttons)
 

@@ -555,12 +555,13 @@ class TouchVisualizer(BoxLayout):
         self.spacing = 10
         self.padding = 5
 
-        self._is_gpio_mode = False  # Track if we're in GPIO mode (Twiddler 4)
+        self._sensors_visible = False  # Track if sensors panel is shown
+        self._has_trill_data = False  # Track if we've received Trill touch data
 
         # Top section: sensors and buttons
-        self.top_section = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
+        self.top_section = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.6)
 
-        # Touch sensors (for nChorder - hidden when Twiddler 4 detected)
+        # Touch sensors (for nChorder - hidden by default, shown when Trill data received)
         self.sensor_panel = BoxLayout(orientation='horizontal', spacing=5, size_hint_x=0.5)
         self.square = TouchSquare(size_hint_x=0.6)
         bar_panel = BoxLayout(orientation='horizontal', spacing=2, size_hint_x=0.4)
@@ -573,10 +574,10 @@ class TouchVisualizer(BoxLayout):
         self.sensor_panel.add_widget(bar_panel)
         self.sensor_panel.add_widget(self.square)
 
-        # Button grid (Twiddler 4 layout)
-        self.button_grid = TwiddlerButtonGrid(size_hint_x=0.5)
+        # Button grid (Twiddler 4 layout) - full width by default
+        self.button_grid = TwiddlerButtonGrid(size_hint_x=1.0)
 
-        self.top_section.add_widget(self.sensor_panel)
+        # Start with sensors hidden (button grid full width)
         self.top_section.add_widget(self.button_grid)
 
         # Chord display (current chord + output)
@@ -589,11 +590,10 @@ class TouchVisualizer(BoxLayout):
         """Update display with new touch data"""
         self.touch_frame = frame
 
-        # Check if GPIO driver (thumb_x == 0x1234)
+        # Check if GPIO driver (thumb_x == 0x1234) - no Trill sensors
         if frame.is_gpio_driver():
-            # Switch to GPIO mode - hide touch sensors, expand button grid
-            if not self._is_gpio_mode:
-                self._is_gpio_mode = True
+            # GPIO mode - hide touch sensors, keep button grid full width
+            if self._sensors_visible:
                 self._hide_sensors()
 
             # GPIO mode - use raw buttons for display
@@ -602,18 +602,24 @@ class TouchVisualizer(BoxLayout):
             self.button_grid.buttons = raw_buttons if raw_buttons else frame.buttons
             self.chord_display.update_from_buttons(frame.buttons, self.config)
         else:
-            # Switch to touch sensor mode - show sensors
-            if self._is_gpio_mode:
-                self._is_gpio_mode = False
+            # Trill sensor mode - show sensors only if we have touch data
+            has_touch = (frame.thumb_size > 0 or
+                         any(t.size > 0 for t in frame.bar0) or
+                         any(t.size > 0 for t in frame.bar1) or
+                         any(t.size > 0 for t in frame.bar2))
+
+            if has_touch:
+                self._has_trill_data = True
+
+            # Only show sensors if we've received Trill data at some point
+            if self._has_trill_data and not self._sensors_visible:
                 self._show_sensors()
 
-            # Normal touch sensor mode
-            # Square sensor
+            # Update sensor displays
             self.square.touch_x = frame.thumb_x
             self.square.touch_y = frame.thumb_y
             self.square.touch_size = frame.thumb_size
 
-            # Bar sensors
             self.bar0.touches = [(t.pos, t.size) for t in frame.bar0]
             self.bar1.touches = [(t.pos, t.size) for t in frame.bar1]
             self.bar2.touches = [(t.pos, t.size) for t in frame.bar2]
@@ -623,16 +629,18 @@ class TouchVisualizer(BoxLayout):
             self.chord_display.update_from_buttons(frame.buttons, self.config)
 
     def _hide_sensors(self):
-        """Hide touch sensor panel (Twiddler 4 mode)"""
-        if self.sensor_panel.parent:
+        """Hide touch sensor panel"""
+        if self._sensors_visible:
             self.top_section.remove_widget(self.sensor_panel)
-            self.button_grid.size_hint_x = 1.0  # Expand button grid
+            self.button_grid.size_hint_x = 1.0
+            self._sensors_visible = False
 
     def _show_sensors(self):
-        """Show touch sensor panel (nChorder mode)"""
-        if not self.sensor_panel.parent:
+        """Show touch sensor panel (nChorder with Trill sensors)"""
+        if not self._sensors_visible:
             self.button_grid.size_hint_x = 0.5
-            self.top_section.add_widget(self.sensor_panel, index=1)  # Add before button_grid
+            self.top_section.add_widget(self.sensor_panel, index=0)
+            self._sensors_visible = True
 
     def load_config(self, config):
         """Load chord config for display and lookup"""
