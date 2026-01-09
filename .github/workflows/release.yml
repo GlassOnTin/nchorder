@@ -174,14 +174,9 @@ jobs:
           path: release/*
           retention-days: 7
 
-  # Build Android APK - TEMPORARILY DISABLED
-  # Issue: python-for-android's python3 recipe requires libuuid which isn't on Android NDK
-  # The _uuid module fails to link. Need to either:
-  # 1. Fork p4a and patch python3 recipe to pass --disable-uuid to configure
-  # 2. Create a complete local python3 recipe with all patches
-  # 3. Wait for upstream p4a fix
+  # Build Android APK
+  # Uses local python3 recipe in ./recipes to disable _uuid module (libuuid not on Android NDK)
   build-android:
-    if: false  # Temporarily disabled - see comment above
     runs-on: ubuntu-22.04
 
     env:
