@@ -58,6 +58,18 @@ jobs:
         run: |
           brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
 
+      # Cache pip packages for faster builds
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/Library/Caches/pip
+            ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -86,60 +98,31 @@ jobs:
             --add-data "configs:configs" \
             main.py
 
-      # Windows: Use folder mode (faster) then zip - following Kivy best practices
+      # Windows: Use folder mode (faster) - following Kivy best practices
       - name: Build with PyInstaller (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: |
-          # Create a minimal PyInstaller spec that follows Kivy documentation
-          # Using folder mode is much faster than onefile on Windows
+          # Install Windows-specific Kivy dependencies
+          pip install kivy_deps.sdl2 kivy_deps.glew
 
-          @"
-          # -*- mode: python ; coding: utf-8 -*-
-          from kivy_deps import sdl2, glew
+          # Build using folder mode (much faster than onefile)
+          # The --collect-data and --collect-submodules ensure all Kivy resources are included
+          pyinstaller `
+            --name "${{ env.APP_NAME }}" `
+            --windowed `
+            --add-data "configs;configs" `
+            --exclude-module tkinter `
+            --exclude-module matplotlib `
+            --noconfirm `
+            main.py
 
-          a = Analysis(
-              ['main.py'],
-              pathex=[],
-              binaries=[],
-              datas=[('configs', 'configs')],
-              hiddenimports=['kivy.core.window.window_sdl2', 'kivy.core.text.text_sdl2'],
-              hookspath=[],
-              hooksconfig={},
-              runtime_hooks=[],
-              excludes=['tkinter', 'matplotlib'],
-              noarchive=False,
-          )
-          pyz = PYZ(a.pure)
-
-          exe = EXE(
-              pyz,
-              a.scripts,
-              [],
-              exclude_binaries=True,
-              name='${{ env.APP_NAME }}',
-              debug=False,
-              bootloader_ignore_signals=False,
-              strip=False,
-              upx=False,
-              console=False,
-              disable_windowed_traceback=False,
-          )
-
-          coll = COLLECT(
-              exe,
-              a.binaries,
-              a.datas,
-              *[Tree(p) for p in (sdl2.dep_bins + glew.dep_bins)],
-              strip=False,
-              upx=False,
-              name='${{ env.APP_NAME }}',
-          )
-          "@ | Out-File -FilePath nchorder.spec -Encoding utf8
-
-          # Build using the spec file
-          pyinstaller nchorder.spec
+          # Copy SDL2 and GLEW DLLs to dist folder
+          $sdl2Path = python -c "import kivy_deps.sdl2 as m; print(m.dep_bins[0])"
+          $glewPath = python -c "import kivy_deps.glew as m; print(m.dep_bins[0])"
+          Copy-Item "$sdl2Path\*.dll" "dist\${{ env.APP_NAME }}\" -Force
+          Copy-Item "$glewPath\*.dll" "dist\${{ env.APP_NAME }}\" -Force
 
       - name: Package artifact (Linux)
         if: matrix.platform == 'linux'
@@ -232,10 +215,17 @@ jobs:
 
       - name: Build APK
         timeout-minutes: 60
+        env:
+          # Disable _uuid module - libuuid not available on Android NDK
+          # Python's uuid module will use pure Python fallback
+          py_cv_module__uuid: "n/a"
+          py_cv_module__tkinter: "n/a"
         run: |
-          # Use existing buildozer.spec
           # Accept SDK license
           sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec || true
+
+          # Build only arm64-v8a for faster builds (can add armeabi-v7a later)
+          sed -i 's/android.archs = arm64-v8a, armeabi-v7a/android.archs = arm64-v8a/' buildozer.spec || true
 
           # Build debug APK
           buildozer -v android debug 2>&1 | tee buildozer.log
