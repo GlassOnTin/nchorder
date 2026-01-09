@@ -308,7 +308,8 @@ android.allow_backup = True
 #p4a.source_dir =
 
 # (str) The directory in which python-for-android should look for your own build recipes (if any)
-#p4a.local_recipes =
+# Custom python3 recipe that disables _uuid module (libuuid not on Android)
+p4a.local_recipes = ./recipes
 
 # (str) Filename to the hook for p4a
 p4a.hook = p4a_hook.py

@@ -98,31 +98,31 @@ jobs:
             --add-data "configs:configs" \
             main.py
 
-      # Windows: Use folder mode (faster) - following Kivy best practices
-      - name: Build with PyInstaller (Windows)
+      # Windows: Use Nuitka which has native Kivy support and is faster
+      - name: Build with Nuitka (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
-        timeout-minutes: 45
+        timeout-minutes: 60
         run: |
-          # Install Windows-specific Kivy dependencies
+          # Install Windows-specific dependencies
           pip install kivy_deps.sdl2 kivy_deps.glew
+          pip install nuitka ordered-set zstandard
 
-          # Build using folder mode (much faster than onefile)
-          # The --collect-data and --collect-submodules ensure all Kivy resources are included
-          pyinstaller `
-            --name "${{ env.APP_NAME }}" `
-            --windowed `
-            --add-data "configs;configs" `
-            --exclude-module tkinter `
-            --exclude-module matplotlib `
-            --noconfirm `
+          # Build using Nuitka with Kivy plugin (auto-detects Kivy)
+          python -m nuitka `
+            --standalone `
+            --enable-plugin=kivy `
+            --windows-console-mode=disable `
+            --include-data-dir=configs=configs `
+            --output-dir=dist `
+            --output-filename="${{ env.APP_NAME }}.exe" `
+            --assume-yes-for-downloads `
             main.py
 
-          # Copy SDL2 and GLEW DLLs to dist folder
-          $sdl2Path = python -c "import kivy_deps.sdl2 as m; print(m.dep_bins[0])"
-          $glewPath = python -c "import kivy_deps.glew as m; print(m.dep_bins[0])"
-          Copy-Item "$sdl2Path\*.dll" "dist\${{ env.APP_NAME }}\" -Force
-          Copy-Item "$glewPath\*.dll" "dist\${{ env.APP_NAME }}\" -Force
+          # Rename output directory
+          if (Test-Path "dist\main.dist") {
+            Rename-Item "dist\main.dist" "${{ env.APP_NAME }}"
+          }
 
       - name: Package artifact (Linux)
         if: matrix.platform == 'linux'
