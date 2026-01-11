@@ -17,6 +17,7 @@ from kivy.uix.button import Button
 from kivy.graphics import Color, Rectangle, RoundedRectangle, Line
 from kivy.properties import ObjectProperty, NumericProperty, ListProperty, StringProperty
 from kivy.core.text import Label as CoreLabel
+from kivy.metrics import dp
 
 from .chord_view import ChordConfig, ChordEntry, BTN_BITS, BTN_NAMES
 
@@ -99,24 +100,20 @@ def parse_key_output(key_str: str) -> tuple[str, bool, bool, bool]:
 
 
 # Button layout matching physical Twiddler
-# T0 moved to first row between T1 and T4
+# T0 excluded - only used for mouse click
 CHEATSHEET_LAYOUT = {
-    # Thumb row (row 0) - T1 left, T0 center-left, T4 right
-    'T1': (0, 0),
-    'T0': (0, 1),  # Between T1 and T2/T3
-    'T4': (0, 3),
-    # Second row for T2/T3
-    'T2': (1, 1), 'T3': (1, 2),
-    # Finger buttons (rows 2-6)
-    'F0L': (2, 0), 'F0M': (2, 1), 'F0R': (2, 2),
-    'F1L': (3, 0), 'F1M': (3, 1), 'F1R': (3, 2),
-    'F2L': (4, 0), 'F2M': (4, 1), 'F2R': (4, 2),
-    'F3L': (5, 0), 'F3M': (5, 1), 'F3R': (5, 2),
-    'F4L': (6, 0), 'F4M': (6, 1), 'F4R': (6, 2),
+    # Thumb row (row 0)
+    'T1': (0, 0), 'T2': (0, 1), 'T3': (0, 2), 'T4': (0, 3),
+    # Finger buttons (rows 1-5)
+    'F0L': (1, 0), 'F0M': (1, 1), 'F0R': (1, 2),
+    'F1L': (2, 0), 'F1M': (2, 1), 'F1R': (2, 2),
+    'F2L': (3, 0), 'F2M': (3, 1), 'F2R': (3, 2),
+    'F3L': (4, 0), 'F3M': (4, 1), 'F3R': (4, 2),
+    'F4L': (5, 0), 'F4M': (5, 1), 'F4R': (5, 2),
 }
 
 # Grid dimensions
-GRID_ROWS = 7
+GRID_ROWS = 6
 GRID_COLS = 4
 
 
@@ -295,9 +292,10 @@ class CheatSheetGrid(ScrollView):
     card_size = NumericProperty(120)
 
     # Min/max columns for responsive layout
-    MIN_COLS = 2
+    MIN_COLS = 1  # Allow single column for narrow screens
     MAX_COLS = 6
-    MIN_CARD_WIDTH = 100  # Minimum card width before reducing columns
+    # Use dp() for density-independent sizing - 80dp is readable on most devices
+    MIN_CARD_WIDTH_DP = 80
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -305,8 +303,8 @@ class CheatSheetGrid(ScrollView):
 
         self.container = GridLayout(
             cols=self.cards_per_row,
-            spacing=10,
-            padding=10,
+            spacing=dp(8),
+            padding=dp(8),
             size_hint_y=None
         )
         self.container.bind(minimum_height=self.container.setter('height'))
@@ -318,20 +316,27 @@ class CheatSheetGrid(ScrollView):
         self.bind(size=self._on_size_change)
 
     def _on_size_change(self, instance, size):
-        """Adjust column count based on available width."""
+        """Adjust column count based on available width using density-independent pixels."""
         if not self.config:
             return
 
         width = size[0]
-        padding = 20  # Total horizontal padding
-        spacing = 10  # Space between cards
+        padding_dp = dp(16)  # Total horizontal padding in dp
+        spacing_dp = dp(8)   # Space between cards in dp
 
-        # Calculate how many cards fit at current card_size
-        available = width - padding
-        card_with_spacing = self.card_size + spacing
+        # Calculate minimum card width in actual pixels for this device
+        min_card_px = dp(self.MIN_CARD_WIDTH_DP)
+
+        # Calculate how many cards fit
+        available = width - padding_dp
+        card_with_spacing = min_card_px + spacing_dp
 
         if card_with_spacing > 0:
             cols = max(self.MIN_COLS, min(self.MAX_COLS, int(available / card_with_spacing)))
+
+            # Update card_size to fill available space evenly
+            if cols > 0:
+                self.card_size = (available - (cols - 1) * spacing_dp) / cols
 
             if cols != self.cards_per_row:
                 self.cards_per_row = cols
@@ -357,10 +362,11 @@ class CheatSheetGrid(ScrollView):
                 continue
 
             # Card container (card + label below)
+            label_height = dp(20)
             card_box = BoxLayout(
                 orientation='vertical',
                 size_hint_y=None,
-                height=self.card_size + 25
+                height=self.card_size + label_height
             )
 
             # The compressed chord card
@@ -377,8 +383,8 @@ class CheatSheetGrid(ScrollView):
             label = Label(
                 text=f'{base_button} ({len(chord_map)} chords)',
                 size_hint_y=None,
-                height=25,
-                font_size='12sp',
+                height=label_height,
+                font_size='11sp',
                 color=(0.7, 0.7, 0.7, 1)
             )
             card_box.add_widget(label)
@@ -435,11 +441,11 @@ class CheatSheetView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.padding = 5
-        self.spacing = 5
+        self.padding = dp(4)
+        self.spacing = dp(4)
 
         # Toolbar with color legend
-        toolbar = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        toolbar = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(4))
 
         # Color legend
         legend_colors = [
@@ -480,8 +486,8 @@ class CheatSheetView(BoxLayout):
         self.status_label = Label(
             text='Load a config to view cheat sheet',
             size_hint_y=None,
-            height=25,
-            font_size='12sp'
+            height=dp(22),
+            font_size='11sp'
         )
         self.add_widget(self.status_label)
 
