@@ -28,11 +28,11 @@ source.exclude_dirs = tests,docs,firmware,sdk,photos,re,.git,.venv,venv,__pycach
 source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 0.1.0
+version = 0.1.2
 
 # (list) Application requirements
-# Note: USB serial support optional - usb4a/usbserial4a can be added for Android USB host
-requirements = python3,kivy==2.3.0,pyserial
+# usb4a/usbserial4a required for Android USB host serial communication
+requirements = python3,kivy==2.3.0,pyserial,usb4a,usbserial4a
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes

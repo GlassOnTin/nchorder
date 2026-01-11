@@ -296,6 +296,41 @@ class NChorderDevice:
                     devices.append(port.device)
             return devices
 
+    @classmethod
+    def has_usb_permission(cls, device_name: str) -> bool:
+        """Check if we have USB permission for the device (Android only)."""
+        if not _ANDROID:
+            return True  # Desktop doesn't need explicit permission
+        try:
+            from usb4a import usb
+            device = usb.get_usb_device(device_name)
+            if device is None:
+                return False
+            return usb.has_usb_device_permission(device)
+        except Exception:
+            return False
+
+    @classmethod
+    def request_usb_permission(cls, device_name: str) -> bool:
+        """
+        Request USB permission for device (Android only).
+
+        This shows a system dialog asking the user to grant permission.
+        Returns True if permission request was initiated (not if granted).
+        Call has_usb_permission() after user responds to check result.
+        """
+        if not _ANDROID:
+            return True  # Desktop doesn't need explicit permission
+        try:
+            from usb4a import usb
+            device = usb.get_usb_device(device_name)
+            if device is None:
+                return False
+            usb.request_usb_device_permission(device)
+            return True
+        except Exception:
+            return False
+
     def connect(self, timeout: float = 1.0) -> bool:
         """
         Connect to the device.
@@ -318,11 +353,16 @@ class NChorderDevice:
 
         try:
             if self._is_android:
-                # Android USB serial
+                # Android USB serial - check permission first
                 from usb4a import usb
                 device = usb.get_usb_device(port)
                 if device is None:
                     return False
+                # Check if we have permission
+                if not usb.has_usb_device_permission(device):
+                    # Request permission - this shows a dialog to the user
+                    usb.request_usb_device_permission(device)
+                    return False  # Can't connect yet, waiting for permission
                 self._serial = usb_serial.get_serial_port(
                     port,
                     baudrate=115200,

@@ -10,6 +10,8 @@ Main Kivy application with:
 Cross-platform: Windows, Linux, Mac, Android (via Kivy/Buildozer)
 """
 
+import os
+
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -23,6 +25,9 @@ from kivy.clock import Clock, mainthread
 from kivy.properties import ObjectProperty, BooleanProperty, StringProperty
 
 from pathlib import Path
+
+# Platform detection
+_ANDROID = 'ANDROID_STORAGE' in os.environ
 
 from .touch_view import TouchVisualizer
 from .chord_view import ChordMapView, ChordConfig
@@ -197,9 +202,24 @@ class ConnectionOverlay(BoxLayout):
         )
         content.add_widget(title)
 
+        # Platform-specific instructions
+        if _ANDROID:
+            instruction_text = (
+                'Connect your nChorder or Twiddler via\n'
+                'USB-C OTG adapter to use Touch features.\n\n'
+                'Cheat Sheet and Exercise modes work\n'
+                'without a keyboard connected.'
+            )
+        else:
+            instruction_text = (
+                'Connect your nChorder or Twiddler via USB\n'
+                'to use Touch and Config features.\n\n'
+                'Cheat Sheet and Exercise modes work\n'
+                'without a keyboard connected.'
+            )
+
         instructions = Label(
-            text='Connect your nChorder or Twiddler via USB\nto use Touch and Config features.\n\n'
-                 'Cheat Sheet and Exercise modes work\nwithout a keyboard connected.',
+            text=instruction_text,
             font_size='14sp',
             halign='center',
             valign='middle',
@@ -416,7 +436,18 @@ class MainLayout(BoxLayout):
 
         devices = NChorderDevice.find_devices()
         if devices:
-            self.device = NChorderDevice(devices[0])
+            device_name = devices[0]
+
+            # On Android, check USB permission first
+            if _ANDROID and not NChorderDevice.has_usb_permission(device_name):
+                self.connection_overlay.status_label.text = (
+                    'Device found!\nPlease grant USB permission...'
+                )
+                # Request permission - this shows a system dialog
+                NChorderDevice.request_usb_permission(device_name)
+                return
+
+            self.device = NChorderDevice(device_name)
             if self.device.connect():
                 # Show touch visualizer (hide overlay)
                 self._show_touch_visualizer()
@@ -430,9 +461,20 @@ class MainLayout(BoxLayout):
 
                 # Auto-start streaming
                 self._start_stream()
+            elif _ANDROID:
+                # On Android, connect() returning False might mean permission pending
+                self.connection_overlay.status_label.text = (
+                    'Waiting for USB permission...\nTap "Allow" in the dialog.'
+                )
         else:
             # No devices found - update overlay status
-            self.connection_overlay.status_label.text = 'No devices found. Searching...'
+            if _ANDROID:
+                self.connection_overlay.status_label.text = (
+                    'No devices found.\n\nConnect your keyboard via\n'
+                    'USB-C OTG adapter.'
+                )
+            else:
+                self.connection_overlay.status_label.text = 'No devices found. Searching...'
 
     def _check_connection(self):
         """Periodically check connection and reconnect if needed"""
