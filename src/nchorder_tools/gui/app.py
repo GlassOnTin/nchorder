@@ -15,6 +15,7 @@ import os
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
 from kivy.uix.label import Label
 from kivy.uix.button import Button
@@ -23,11 +24,13 @@ from kivy.uix.spinner import Spinner
 from kivy.uix.popup import Popup
 from kivy.clock import Clock, mainthread
 from kivy.properties import ObjectProperty, BooleanProperty, StringProperty
+from kivy.metrics import dp
 
 from pathlib import Path
+from kivy.utils import platform
 
 # Platform detection
-_ANDROID = 'ANDROID_STORAGE' in os.environ
+_ANDROID = platform == 'android'
 
 from .touch_view import TouchVisualizer
 from .chord_view import ChordMapView, ChordConfig
@@ -68,16 +71,23 @@ class StatusBar(BoxLayout):
         self.bind(version_text=lambda *a: setattr(self.version_label, 'text', self.version_text))
 
 
-class ConfigPanel(BoxLayout):
-    """Configuration sliders and controls"""
+class ConfigPanel(ScrollView):
+    """Configuration sliders and controls - scrollable for mobile"""
 
     device = ObjectProperty(None, allownone=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.orientation = 'vertical'
-        self.padding = 10
-        self.spacing = 5
+        self.do_scroll_x = False
+
+        # Inner container with fixed height content
+        container = BoxLayout(
+            orientation='vertical',
+            padding=dp(10),
+            spacing=dp(8),
+            size_hint_y=None
+        )
+        container.bind(minimum_height=container.setter('height'))
 
         # Configuration sliders
         self.sliders = {}
@@ -92,20 +102,20 @@ class ConfigPanel(BoxLayout):
         ]
 
         for config_id, label, min_val, max_val, default in configs:
-            row = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
+            row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(50))
 
-            lbl = Label(text=label, size_hint_x=0.4, halign='left')
+            lbl = Label(text=label, size_hint_x=0.4, halign='left', font_size='14sp')
             lbl.bind(size=lbl.setter('text_size'))
 
             slider = Slider(
                 min=min_val,
                 max=max_val,
                 value=default,
-                size_hint_x=0.5
+                size_hint_x=0.45
             )
             slider.config_id = config_id
 
-            value_lbl = Label(text=str(default), size_hint_x=0.1)
+            value_lbl = Label(text=str(default), size_hint_x=0.15, font_size='14sp')
 
             def on_value(instance, value, vlbl=value_lbl, cid=config_id):
                 vlbl.text = str(int(value))
@@ -116,22 +126,24 @@ class ConfigPanel(BoxLayout):
             row.add_widget(lbl)
             row.add_widget(slider)
             row.add_widget(value_lbl)
-            self.add_widget(row)
+            container.add_widget(row)
             self.sliders[config_id] = slider
 
         # Buttons
-        btn_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
-        btn_row.padding = [0, 10, 0, 0]
+        btn_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(50), spacing=dp(10))
+        btn_row.padding = [0, dp(15), 0, 0]
 
-        reset_btn = Button(text='Reset Defaults')
+        reset_btn = Button(text='Reset Defaults', font_size='14sp')
         reset_btn.bind(on_press=self._on_reset)
 
-        save_btn = Button(text='Save to Flash')
+        save_btn = Button(text='Save to Flash', font_size='14sp')
         save_btn.bind(on_press=self._on_save)
 
         btn_row.add_widget(reset_btn)
         btn_row.add_widget(save_btn)
-        self.add_widget(btn_row)
+        container.add_widget(btn_row)
+
+        self.add_widget(container)
 
     def _apply_config(self, config_id: str, value: int):
         """Apply a configuration change to device"""
@@ -467,14 +479,16 @@ class MainLayout(BoxLayout):
                     'Waiting for USB permission...\nTap "Allow" in the dialog.'
                 )
         else:
-            # No devices found - update overlay status
+            # No devices found - show debug info
+            usb_status = NChorderDevice.get_usb_status()
             if _ANDROID:
                 self.connection_overlay.status_label.text = (
-                    'No devices found.\n\nConnect your keyboard via\n'
-                    'USB-C OTG adapter.'
+                    f'No nChorder devices found.\n\n'
+                    f'Connect via USB-C OTG adapter.\n\n'
+                    f'{usb_status}'
                 )
             else:
-                self.connection_overlay.status_label.text = 'No devices found. Searching...'
+                self.connection_overlay.status_label.text = f'No devices found. {usb_status}'
 
     def _check_connection(self):
         """Periodically check connection and reconnect if needed"""

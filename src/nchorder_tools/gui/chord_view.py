@@ -24,6 +24,7 @@ from kivy.properties import (
     ObjectProperty, StringProperty, NumericProperty, ListProperty, DictProperty
 )
 from kivy.clock import Clock
+from kivy.metrics import dp
 
 
 # Button bit positions
@@ -330,7 +331,7 @@ class ChordTreeView(BoxLayout):
         self.tree = TreeView(
             root_options={'text': 'Chords'},
             hide_root=True,
-            indent_level=20
+            indent_level=dp(20)
         )
         self.tree.size_hint_y = None
         self.tree.bind(minimum_height=self.tree.setter('height'))
@@ -853,26 +854,27 @@ class ChordMapView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.padding = 5
-        self.spacing = 5
+        self.padding = dp(5)
+        self.spacing = dp(5)
 
         # Compact toolbar
-        toolbar = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        toolbar = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(5))
 
-        load_btn = Button(text='Load', size_hint_x=0.25)
+        load_btn = Button(text='Load', size_hint_x=0.25, font_size='14sp')
         load_btn.bind(on_press=self._on_load)
 
-        save_btn = Button(text='Save', size_hint_x=0.25)
+        save_btn = Button(text='Save', size_hint_x=0.25, font_size='14sp')
         save_btn.bind(on_press=self._on_save)
 
-        upload_btn = Button(text='Upload', size_hint_x=0.25)
+        upload_btn = Button(text='Upload', size_hint_x=0.25, font_size='14sp')
         upload_btn.bind(on_press=self._on_upload)
 
         # Search/filter (future feature)
         self.search_input = TextInput(
             hint_text='Search...',
             size_hint_x=0.25,
-            multiline=False
+            multiline=False,
+            font_size='14sp'
         )
 
         toolbar.add_widget(load_btn)
@@ -885,8 +887,8 @@ class ChordMapView(BoxLayout):
         self.status_label = Label(
             text='No config loaded',
             size_hint_y=None,
-            height=25,
-            font_size='12sp'
+            height=dp(24),
+            font_size='13sp'
         )
         self.add_widget(self.status_label)
 
@@ -900,7 +902,7 @@ class ChordMapView(BoxLayout):
         self.info_label = Label(
             text='Long-press or right-click to edit',
             size_hint_y=None,
-            height=30,
+            height=dp(28),
             font_size='13sp'
         )
         self.add_widget(self.info_label)

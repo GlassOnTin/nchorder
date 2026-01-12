@@ -17,12 +17,18 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Callable, Optional, List
 
-# Platform detection
-_ANDROID = os.environ.get('NCHORDER_SERIAL_BACKEND') == 'android' or \
-           'ANDROID_STORAGE' in os.environ
+# Platform detection - try multiple methods
+_ANDROID = False
+try:
+    from kivy.utils import platform
+    _ANDROID = platform == 'android'
+except ImportError:
+    _ANDROID = os.environ.get('NCHORDER_SERIAL_BACKEND') == 'android' or \
+               'ANDROID_STORAGE' in os.environ
 
 serial = None
 usb_serial = None
+_usb4a_error = None  # Track import errors for debugging
 
 if _ANDROID:
     # Android: use usb4a/usbserial4a
@@ -30,8 +36,8 @@ if _ANDROID:
         from usb4a import usb
         from usbserial4a import serial4a
         usb_serial = serial4a
-    except ImportError:
-        pass
+    except ImportError as e:
+        _usb4a_error = str(e)
 else:
     # Desktop: use pyserial
     try:
@@ -270,6 +276,31 @@ class NChorderDevice:
         self._is_android = _ANDROID
 
     @classmethod
+    def get_usb_status(cls) -> str:
+        """Get USB subsystem status for debugging."""
+        if _ANDROID:
+            if usb_serial is None:
+                return f"Android USB: usb4a not available ({_usb4a_error or 'not imported'})"
+            try:
+                from usb4a import usb
+                device_list = usb.get_usb_device_list()
+                if not device_list:
+                    return "Android USB: No devices found"
+                info = []
+                for d in device_list:
+                    info.append(f"{d.getDeviceName()}: VID={hex(d.getVendorId())} PID={hex(d.getProductId())}")
+                return f"Android USB: {len(device_list)} device(s): " + ", ".join(info)
+            except Exception as e:
+                return f"Android USB error: {e}"
+        else:
+            if serial is None:
+                return "Desktop: pyserial not available"
+            ports = list(serial.tools.list_ports.comports())
+            if not ports:
+                return "Desktop: No serial ports"
+            return f"Desktop: {len(ports)} port(s)"
+
+    @classmethod
     def find_devices(cls) -> List[str]:
         """Find all connected nChorder devices."""
         if _ANDROID:
@@ -281,6 +312,7 @@ class NChorderDevice:
                 device_list = usb.get_usb_device_list()
                 devices = []
                 for device in device_list:
+                    # Match by VID/PID - Nordic nRF52840 USB
                     if device.getVendorId() == cls.VID and device.getProductId() == cls.PID:
                         devices.append(device.getDeviceName())
                 return devices

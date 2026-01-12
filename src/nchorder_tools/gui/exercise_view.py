@@ -21,6 +21,7 @@ from kivy.graphics import Color, Rectangle, Line, RoundedRectangle
 from kivy.properties import ObjectProperty, StringProperty, NumericProperty, BooleanProperty
 from kivy.clock import Clock
 from kivy.core.text import Label as CoreLabel
+from kivy.metrics import dp
 
 
 # Thumb button bit positions
@@ -389,9 +390,9 @@ class ExerciseStats(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = 'horizontal'
         self.size_hint_y = None
-        self.height = 40
-        self.padding = 10
-        self.spacing = 20
+        self.height = dp(40)
+        self.padding = dp(8)
+        self.spacing = dp(10)
 
         # Time display
         self.time_label = Label(text='Time: 00:00', size_hint_x=0.25, halign='left')
@@ -438,8 +439,8 @@ class ExerciseView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.padding = 10
-        self.spacing = 10
+        self.padding = dp(8)
+        self.spacing = dp(8)
 
         # State
         self._chord_groups = {}
@@ -464,7 +465,7 @@ class ExerciseView(BoxLayout):
         self._fixed_col = None  # Which column of fixed row (e.g., 'L', 'M', 'R')
 
         # Toolbar
-        toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=45, spacing=10)
+        toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(44), spacing=dp(8))
 
         # Lesson selector
         lesson_names = [f'{name}' for name, desc, _ in LESSONS]
@@ -503,8 +504,8 @@ class ExerciseView(BoxLayout):
         self.status_label = Label(
             text='Load a chord config to begin',
             size_hint_y=None,
-            height=30,
-            font_size='14sp',
+            height=dp(28),
+            font_size='13sp',
             color=(0.7, 0.7, 0.7, 1)
         )
         self.add_widget(self.status_label)

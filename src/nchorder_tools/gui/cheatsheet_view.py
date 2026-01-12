@@ -294,8 +294,9 @@ class CheatSheetGrid(ScrollView):
     # Min/max columns for responsive layout
     MIN_COLS = 1  # Allow single column for narrow screens
     MAX_COLS = 6
-    # Use dp() for density-independent sizing - 80dp is readable on most devices
-    MIN_CARD_WIDTH_DP = 80
+    # Use dp() for density-independent sizing
+    # 200dp ensures 1-2 columns on phones, 3-4 on tablets
+    MIN_CARD_WIDTH_DP = 200
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

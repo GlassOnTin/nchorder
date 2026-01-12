@@ -28,7 +28,7 @@ source.exclude_dirs = tests,docs,firmware,sdk,photos,re,.git,.venv,venv,__pycach
 source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 0.1.2
+version = 0.1.3
 
 # (list) Application requirements
 # usb4a/usbserial4a required for Android USB host serial communication
