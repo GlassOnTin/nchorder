@@ -852,6 +852,7 @@ class ChordMapView(BoxLayout):
 
     config = ObjectProperty(None, allownone=True)
     device = ObjectProperty(None, allownone=True)
+    _on_upload_callback = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1004,34 +1005,10 @@ class ChordMapView(BoxLayout):
         for entry in self._config.entries:
             data += entry.to_bytes()
 
-        # Run upload in background thread to avoid blocking UI
-        import threading
-        def _do_upload():
-            try:
-                was_streaming = getattr(self.device, '_streaming', False)
-                callback = getattr(self.device, '_stream_callback', None)
-                self.device.stop_stream()
-                import time
-                time.sleep(0.1)  # Let serial settle after stopping stream
-
-                success = self.device.upload_config(data)
-            except Exception as e:
-                print(f"[UPLOAD-THREAD] exception: {e}", flush=True)
-                success = False
-
-            # Update UI immediately
-            from kivy.clock import Clock
-            Clock.schedule_once(
-                lambda dt: setattr(self.status_label, 'text',
-                                   'Config uploaded!' if success else 'Upload failed'), 0)
-
-            # Resume streaming after UI update (non-critical)
-            try:
-                if was_streaming and callback:
-                    import time
-                    time.sleep(0.2)
-                    self.device.start_stream(callback=callback, rate_hz=60)
-            except Exception:
-                pass
-
-        threading.Thread(target=_do_upload, daemon=True).start()
+        # Delegate to app's upload callback if available (manages stream stop/restart)
+        if self._on_upload_callback:
+            self._on_upload_callback(data, self.status_label)
+        else:
+            # Fallback: direct upload without stream management
+            success = self.device.upload_config(data)
+            self.status_label.text = 'Config uploaded!' if success else 'Upload failed'

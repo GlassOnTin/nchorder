@@ -515,6 +515,7 @@ class MainLayout(BoxLayout):
 
                 # Set device for chord editor
                 self.chord_map.device = self.device
+                self.chord_map._on_upload_callback = self._upload_with_stream_restart
 
                 # Auto-start streaming
                 print(f"[CONNECT] connected, starting stream", flush=True)
@@ -571,6 +572,28 @@ class MainLayout(BoxLayout):
                 time.sleep(0.2)
                 ok = self._start_stream()
                 print(f"[SAVE] stream restarted={ok}", flush=True)
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _upload_with_stream_restart(self, config_data, status_label):
+        """Upload config, stopping/restarting stream around it."""
+        import threading
+        was_streaming = self._streaming
+        self._stop_stream()
+        def _do():
+            import time
+            time.sleep(0.1)
+            try:
+                success = self.device.upload_config(config_data)
+            except Exception as e:
+                print(f"[UPLOAD] exception: {e}", flush=True)
+                success = False
+            from kivy.clock import Clock
+            Clock.schedule_once(
+                lambda dt: setattr(status_label, 'text',
+                                   'Config uploaded!' if success else 'Upload failed'), 0)
+            if was_streaming:
+                time.sleep(0.2)
+                self._start_stream()
         threading.Thread(target=_do, daemon=True).start()
 
     def _start_stream(self):
