@@ -12,31 +12,90 @@
 #include "nchorder_config.h"
 
 // Chord state representation
-// Uses a 16-bit bitmask where each bit represents one button
-typedef uint16_t chord_t;
+// Uses a 32-bit bitmask where each bit represents one button
+// Supports up to 32 buttons (19 used on Twiddler 4)
+typedef uint32_t chord_t;
 
 // Button bit positions in chord_t (matches nchorder_config.h)
-// Naming: T1-T4 = Thumb buttons, F1-F4 = Finger rows, L/M/R = columns
-#define CHORD_T1    (1 << BTN_T1)    // Bit 0  - Thumb N (Num)
-#define CHORD_F1L   (1 << BTN_F1L)   // Bit 1  - Finger row 1 Left
-#define CHORD_F1M   (1 << BTN_F1M)   // Bit 2  - Finger row 1 Middle
-#define CHORD_F1R   (1 << BTN_F1R)   // Bit 3  - Finger row 1 Right
-#define CHORD_T2    (1 << BTN_T2)    // Bit 4  - Thumb A (Alt)
-#define CHORD_F2L   (1 << BTN_F2L)   // Bit 5  - Finger row 2 Left
-#define CHORD_F2M   (1 << BTN_F2M)   // Bit 6  - Finger row 2 Middle
-#define CHORD_F2R   (1 << BTN_F2R)   // Bit 7  - Finger row 2 Right
-#define CHORD_T3    (1 << BTN_T3)    // Bit 8  - Thumb E (Ctrl/Enter)
-#define CHORD_F3L   (1 << BTN_F3L)   // Bit 9  - Finger row 3 Left
-#define CHORD_F3M   (1 << BTN_F3M)   // Bit 10 - Finger row 3 Middle
-#define CHORD_F3R   (1 << BTN_F3R)   // Bit 11 - Finger row 3 Right
-#define CHORD_T4    (1 << BTN_T4)    // Bit 12 - Thumb SP (Shift/Space)
-#define CHORD_F4L   (1 << BTN_F4L)   // Bit 13 - Finger row 4 Left
-#define CHORD_F4M   (1 << BTN_F4M)   // Bit 14 - Finger row 4 Middle
-#define CHORD_F4R   (1 << BTN_F4R)   // Bit 15 - Finger row 4 Right
+// Naming: T1-T4 = Thumb buttons, F0-F4 = Finger rows, L/M/R = columns
+#define CHORD_T1    (1UL << BTN_T1)    // Bit 0  - Thumb N (Num)
+#define CHORD_F1L   (1UL << BTN_F1L)   // Bit 1  - Finger row 1 Left
+#define CHORD_F1M   (1UL << BTN_F1M)   // Bit 2  - Finger row 1 Middle
+#define CHORD_F1R   (1UL << BTN_F1R)   // Bit 3  - Finger row 1 Right
+#define CHORD_T2    (1UL << BTN_T2)    // Bit 4  - Thumb A (Alt)
+#define CHORD_F2L   (1UL << BTN_F2L)   // Bit 5  - Finger row 2 Left
+#define CHORD_F2M   (1UL << BTN_F2M)   // Bit 6  - Finger row 2 Middle
+#define CHORD_F2R   (1UL << BTN_F2R)   // Bit 7  - Finger row 2 Right
+#define CHORD_T3    (1UL << BTN_T3)    // Bit 8  - Thumb E (Ctrl/Enter)
+#define CHORD_F3L   (1UL << BTN_F3L)   // Bit 9  - Finger row 3 Left
+#define CHORD_F3M   (1UL << BTN_F3M)   // Bit 10 - Finger row 3 Middle
+#define CHORD_F3R   (1UL << BTN_F3R)   // Bit 11 - Finger row 3 Right
+#define CHORD_T4    (1UL << BTN_T4)    // Bit 12 - Thumb SP (Shift/Space)
+#define CHORD_F4L   (1UL << BTN_F4L)   // Bit 13 - Finger row 4 Left
+#define CHORD_F4M   (1UL << BTN_F4M)   // Bit 14 - Finger row 4 Middle
+#define CHORD_F4R   (1UL << BTN_F4R)   // Bit 15 - Finger row 4 Right
+#define CHORD_F0L   (1UL << BTN_F0L)   // Bit 16 - Finger row 0 Left (mouse)
+#define CHORD_F0M   (1UL << BTN_F0M)   // Bit 17 - Finger row 0 Middle (mouse)
+#define CHORD_F0R   (1UL << BTN_F0R)   // Bit 18 - Finger row 0 Right (mouse)
+#define CHORD_T0    (1UL << BTN_T0)    // Bit 19 - Thumb 0 (extra thumb button)
+#define CHORD_EXT1  (1UL << BTN_EXT1) // Bit 20 - Expansion GPIO 1 (J3 header)
+#define CHORD_EXT2  (1UL << BTN_EXT2) // Bit 21 - Expansion GPIO 2 (J3 header)
 
 // Thumb button masks for modifier detection
-#define CHORD_ANY_THUMB   (CHORD_T1 | CHORD_T2 | CHORD_T3 | CHORD_T4)
-#define CHORD_ANY_FINGER  (~CHORD_ANY_THUMB & 0xFFFF)  // All finger buttons
+#define CHORD_ANY_THUMB   (CHORD_T0 | CHORD_T1 | CHORD_T2 | CHORD_T3 | CHORD_T4)
+#define CHORD_ANY_FINGER  (~CHORD_ANY_THUMB & 0x3FFFFF)  // All non-thumb buttons (22-bit mask)
+
+// ============================================================================
+// System Chords (hardcoded, not from config)
+// Following Twiddler 4 style: T0 + finger tap for system functions
+// ============================================================================
+
+// System chord action codes
+typedef enum {
+    SYS_CHORD_NONE = 0,
+    SYS_CHORD_SLEEP,            // Enter sleep/power-off mode
+    SYS_CHORD_BATTERY_LEVEL,    // Display battery level on LEDs
+    SYS_CHORD_DISPLAY_KB_LEDS,  // Display NumLock/CapsLock/ScrollLock state
+    SYS_CHORD_PRINT_STATUS,     // Print firmware version and status
+    SYS_CHORD_CYCLE_NAV_MODE,   // Cycle mouse/scroll/arrow mode
+    SYS_CHORD_CYCLE_CONFIG,     // Cycle between config files
+    SYS_CHORD_CYCLE_BLE_SLOT,   // Cycle between BLE device slots
+    SYS_CHORD_BLE_PAIRING,      // Enter BLE pairing mode
+    SYS_CHORD_ERASE_BLE_PAIRS,  // Erase all BLE pairings
+    SYS_CHORD_BOOTLOADER,       // Enter bootloader mode
+} system_chord_action_t;
+
+// System chord definitions (Twiddler 4 style)
+// Sleep: T0 + T2 + T3 (thumb only chord)
+#define SYS_CHORD_MASK_SLEEP           (CHORD_T0 | CHORD_T2 | CHORD_T3)
+
+// T0 + F1 row: Status display functions
+#define SYS_CHORD_MASK_DISPLAY_KB_LEDS (CHORD_T0 | CHORD_F1L)
+#define SYS_CHORD_MASK_BATTERY_LEVEL   (CHORD_T0 | CHORD_F1M)
+#define SYS_CHORD_MASK_PRINT_STATUS    (CHORD_T0 | CHORD_F1R)
+
+// T0 + F4 row: Mode and connection functions
+#define SYS_CHORD_MASK_CYCLE_NAV_MODE  (CHORD_T0 | CHORD_F4L)
+#define SYS_CHORD_MASK_CYCLE_CONFIG    (CHORD_T0 | CHORD_F4M)
+#define SYS_CHORD_MASK_CYCLE_BLE_SLOT  (CHORD_T0 | CHORD_F4R)
+
+// T1 + T4 + F4R: Erase BLE pairs (destructive, needs confirmation chord)
+#define SYS_CHORD_MASK_ERASE_BLE_PAIRS (CHORD_T1 | CHORD_T4 | CHORD_F4R)
+
+// T1 + T4 + T0: Enter bootloader (hold T14, tap T0)
+#define SYS_CHORD_MASK_BOOTLOADER      (CHORD_T1 | CHORD_T4 | CHORD_T0)
+
+/**
+ * @brief Check if a chord is a system chord.
+ *
+ * System chords are hardcoded and take priority over config-loaded mappings.
+ * They control firmware functions like sleep, BLE pairing, bootloader, etc.
+ *
+ * @param[in] chord  The chord to check.
+ *
+ * @return system_chord_action_t - the action code, or SYS_CHORD_NONE if not a system chord.
+ */
+system_chord_action_t chord_check_system(chord_t chord);
 
 // Chord mapping entry
 typedef struct {
@@ -68,13 +127,18 @@ typedef struct {
     chord_state_t state;
     chord_t current_chord;   // Currently pressed buttons
     chord_t max_chord;       // Maximum chord seen (for release detection)
+    chord_t pending_chord;   // Chord to output on next update (for walk mode)
     uint32_t press_time;     // Timestamp of first button press
     uint32_t release_time;   // Timestamp of last release
     bool chord_fired;        // Has this chord already fired?
+    bool walk_mode;          // Fire on partial release (for walking layouts)
 } chord_context_t;
 
 // Initialize chord detection
 void chord_init(chord_context_t *ctx);
+
+// Enable/disable walk mode (fire on partial release for walking layouts)
+void chord_set_walk_mode(chord_context_t *ctx, bool enable);
 
 // Update chord state with new button readings
 // Returns true if a chord was just completed (released)

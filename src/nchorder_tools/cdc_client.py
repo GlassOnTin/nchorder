@@ -471,7 +471,7 @@ class NChorderDevice:
             value: New value (0-65535)
 
         Returns:
-            True if acknowledged
+            True if acknowledged (or True if sent while streaming)
         """
         data = struct.pack('<BH', config_id, value)
         response = self._send_command(CDCCommand.SET_CONFIG, data)
@@ -627,9 +627,19 @@ class NChorderDevice:
         return response and len(response) >= 1 and response[0] == CDCResponse.ACK
 
     def save_to_flash(self) -> bool:
-        """Save configuration to flash."""
-        response = self._send_command(CDCCommand.SAVE_FLASH)
-        return response and len(response) >= 1 and response[0] == CDCResponse.ACK
+        """Save configuration to flash (may take up to 5s for FDS)."""
+        if not self.is_connected():
+            return False
+        try:
+            old_timeout = self._serial.timeout
+            self._serial.timeout = 6.0  # FDS write can take up to 5s
+            response = self._send_command(CDCCommand.SAVE_FLASH)
+            self._serial.timeout = old_timeout
+            print(f"[SAVE_FLASH] response={response.hex() if response else None} len={len(response) if response else 0}", flush=True)
+            return response and len(response) >= 1 and response[0] == CDCResponse.ACK
+        except Exception as e:
+            print(f"[SAVE_FLASH] exception: {e}", flush=True)
+            return False
 
     def load_from_flash(self) -> bool:
         """Load configuration from flash."""
@@ -661,34 +671,45 @@ class NChorderDevice:
             return False
 
         total_size = len(config_data)
+        print(f"[UPLOAD] total_size={total_size}, connected={self.is_connected()}")
         if total_size == 0 or total_size > 4096:
+            print(f"[UPLOAD] FAIL: size out of range")
             return False
 
         # Start upload
         start_data = struct.pack('<H', total_size)
         response = self._send_command(CDCCommand.UPLOAD_START, start_data)
+        print(f"[UPLOAD] START response={response.hex() if response else None}")
         if not response or response[0] != CDCResponse.ACK:
+            print(f"[UPLOAD] FAIL at START")
             return False
 
         # Send chunks
         offset = 0
+        chunk_num = 0
         while offset < total_size:
             chunk = config_data[offset:offset + chunk_size]
             response = self._send_command(CDCCommand.UPLOAD_DATA, chunk)
             if not response or response[0] != CDCResponse.ACK:
-                # Abort on error
+                print(f"[UPLOAD] FAIL at chunk {chunk_num}, offset={offset}, response={response.hex() if response else None}")
                 self._send_command(CDCCommand.UPLOAD_ABORT)
                 return False
             offset += len(chunk)
+            chunk_num += 1
+        print(f"[UPLOAD] sent {chunk_num} chunks, {offset} bytes")
 
         # Commit
         response = self._send_command(CDCCommand.UPLOAD_COMMIT)
+        print(f"[UPLOAD] COMMIT response={response.hex() if response else None}")
         if not response or response[0] != CDCResponse.ACK:
+            print(f"[UPLOAD] FAIL at COMMIT")
             return False
 
         # Save to flash for persistence across power cycles
         if save_to_flash:
-            return self.save_to_flash()
+            result = self.save_to_flash()
+            print(f"[UPLOAD] SAVE_FLASH result={result}")
+            return result
 
         return True
 

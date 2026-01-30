@@ -19,15 +19,14 @@
 // Define the target board. This can be set in the Makefile via CFLAGS.
 // Default to XIAO if not specified.
 
-#if defined(BOARD_XIAO_NRF52840)
+#if defined(BOARD_TWIDDLER4)
+    #include "boards/board_twiddler4.h"
+#elif defined(BOARD_XIAO_NRF52840)
     #include "boards/board_xiao_nrf52840.h"
 #elif defined(BOARD_IS_DK)
     #include "boards/board_pca10056.h"
-#elif defined(BOARD_TWIDDLER4)
-    #include "boards/board_twiddler4.h"
 #else
-    // Default to XIAO for production builds
-    #include "boards/board_xiao_nrf52840.h"
+    #error "No board specified! Use make BOARD=twiddler4|xiao|dk"
 #endif
 
 // ============================================================================
@@ -50,7 +49,11 @@
 #define NCHORDER_NUM_THUMB_BUTTONS    4
 #define NCHORDER_NUM_FINGER_COLUMNS   3
 #define NCHORDER_NUM_FINGER_ROWS      4
+#if defined(BOARD_TWIDDLER4)
+#define NCHORDER_TOTAL_BUTTONS        22  // T0-T4 + F0-F4 rows + 2 expansion (EXT1, EXT2)
+#else
 #define NCHORDER_TOTAL_BUTTONS        16
+#endif
 
 // Button bitmask indices (matches config file format)
 // Interleaved: T1, F1L, F1M, F1R, T2, F2L, F2M, F2R, ...
@@ -70,6 +73,12 @@
 #define BTN_F4L   13   // Finger Row 4 - Left
 #define BTN_F4M   14   // Finger Row 4 - Middle
 #define BTN_F4R   15   // Finger Row 4 - Right
+#define BTN_F0L   16   // Finger Row 0 - Left (mouse row)
+#define BTN_F0M   17   // Finger Row 0 - Middle (mouse row)
+#define BTN_F0R   18   // Finger Row 0 - Right (mouse row)
+#define BTN_T0    19   // Thumb 0 (extra thumb button)
+#define BTN_EXT1  20   // Expansion GPIO 1 (P0.28 on J3 header)
+#define BTN_EXT2  21   // Expansion GPIO 2 (P1.09 on J3 header)
 
 // ============================================================================
 // TIMING CONFIGURATION

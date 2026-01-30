@@ -42,6 +42,8 @@
 #define PIN_I2C_SDA               NRF_GPIO_PIN_MAP(0, 4)   // D4 = P0.04
 #define PIN_I2C_SCL               NRF_GPIO_PIN_MAP(0, 5)   // D5 = P0.05
 #define PIN_MUX_RESET             NRF_GPIO_PIN_MAP(1, 11)  // D6 = P1.11
+#define PIN_TRILL_RESET           NRF_GPIO_PIN_MAP(0, 7)   // D7 = P0.07 - Trill sensor hardware reset
+#define PIN_TRILL_EVT             NRF_GPIO_PIN_MAP(0, 10)  // D8 = P0.10 - Trill sensor event/interrupt
 
 // I2C frequency
 #define I2C_FREQUENCY             NRF_TWIM_FREQ_400K
@@ -177,11 +179,13 @@
 // ============================================================================
 // LED CONFIGURATION
 // ============================================================================
-// XIAO has a built-in LED, but we'll primarily use RTT for debug output
-// The XIAO doesn't have WS2812 LEDs like Twiddler 4
+// XIAO has a built-in RGB LED (active low accent LEDs accent on P0.26 R, P0.30 G, P0.06 B)
+// No WS2812 LEDs like Twiddler 4
 
-#define PIN_LED_STATUS            NRF_GPIO_PIN_MAP(0, 26)  // Built-in LED (active low)
+#define PIN_LED_STATUS            NRF_GPIO_PIN_MAP(0, 26)  // Built-in red LED (active low)
 #define PIN_LED_DATA              PIN_UNUSED               // No addressable LEDs
+#define PIN_LED_POWER             PIN_UNUSED               // No power transistor
+#define LED_COUNT                 1                        // Single status LED
 
 // ============================================================================
 // USB CONFIGURATION

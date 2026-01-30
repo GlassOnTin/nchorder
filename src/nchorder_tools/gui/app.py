@@ -76,6 +76,8 @@ class ConfigPanel(ScrollView):
 
     device = ObjectProperty(None, allownone=True)
 
+    _on_save_callback = None
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.do_scroll_x = False
@@ -119,7 +121,7 @@ class ConfigPanel(ScrollView):
 
             def on_value(instance, value, vlbl=value_lbl, cid=config_id):
                 vlbl.text = str(int(value))
-                self._apply_config(cid, int(value))
+                self._debounce_config(cid, int(value))
 
             slider.bind(value=on_value)
 
@@ -145,35 +147,61 @@ class ConfigPanel(ScrollView):
 
         self.add_widget(container)
 
+    def _debounce_config(self, config_id: str, value: int):
+        """Debounce slider changes — send after 0.2s of no movement."""
+        from kivy.clock import Clock
+        if not hasattr(self, '_config_events'):
+            self._config_events = {}
+        if config_id in self._config_events:
+            self._config_events[config_id].cancel()
+        self._config_events[config_id] = Clock.schedule_once(
+            lambda dt, cid=config_id, v=value: self._apply_config(cid, v), 0.2)
+
+    _ID_MAP = {
+        'threshold_press': ConfigID.THRESHOLD_PRESS,
+        'threshold_release': ConfigID.THRESHOLD_RELEASE,
+        'debounce_ms': ConfigID.DEBOUNCE_MS,
+        'poll_rate_ms': ConfigID.POLL_RATE_MS,
+        'mouse_speed': ConfigID.MOUSE_SPEED,
+        'mouse_accel': ConfigID.MOUSE_ACCEL,
+        'volume_sensitivity': ConfigID.VOLUME_SENSITIVITY,
+    }
+
     def _apply_config(self, config_id: str, value: int):
-        """Apply a configuration change to device"""
+        """Queue a configuration change (applied on Save)."""
+        if not hasattr(self, '_pending_config'):
+            self._pending_config = {}
+        if config_id in self._ID_MAP:
+            self._pending_config[config_id] = value
+
+    def _flush_pending_config(self):
+        """Send all pending config changes to device (call when stream is stopped)."""
+        if not hasattr(self, '_pending_config') or not self._pending_config:
+            return
         if not self.device or not self.device.is_connected():
             return
-
-        # Map string to ConfigID enum
-        id_map = {
-            'threshold_press': ConfigID.THRESHOLD_PRESS,
-            'threshold_release': ConfigID.THRESHOLD_RELEASE,
-            'debounce_ms': ConfigID.DEBOUNCE_MS,
-            'poll_rate_ms': ConfigID.POLL_RATE_MS,
-            'mouse_speed': ConfigID.MOUSE_SPEED,
-            'mouse_accel': ConfigID.MOUSE_ACCEL,
-            'volume_sensitivity': ConfigID.VOLUME_SENSITIVITY,
-        }
-
-        if config_id in id_map:
-            self.device.set_config(id_map[config_id], value)
+        for config_id, value in self._pending_config.items():
+            if config_id in self._ID_MAP:
+                self.device.set_config(self._ID_MAP[config_id], value)
+        self._pending_config.clear()
 
     def _on_reset(self, instance):
         """Reset configuration to defaults"""
         if self.device and self.device.is_connected():
-            if self.device.reset_defaults():
-                self.load_from_device()
+            if self._on_save_callback:
+                self._on_save_callback(reset=True)
+            else:
+                if self.device.reset_defaults():
+                    self.load_from_device()
 
     def _on_save(self, instance):
         """Save configuration to flash"""
         if self.device and self.device.is_connected():
-            self.device.save_to_flash()
+            if self._on_save_callback:
+                self._on_save_callback()
+            else:
+                self._flush_pending_config()
+                self.device.save_to_flash()
 
     def load_from_device(self):
         """Load current configuration from device"""
@@ -197,20 +225,22 @@ class ConnectionOverlay(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.padding = 20
-        self.spacing = 10
+        self.padding = dp(20)
+        self.spacing = dp(10)
 
         # Center content vertically
         self.add_widget(BoxLayout())  # Spacer
 
-        content = BoxLayout(orientation='vertical', size_hint_y=None, height=200, spacing=15)
+        # Use size_hint_y=None with explicit height to prevent overlap
+        # Height needs to accommodate: title + instructions + status (with multi-line text)
+        content = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(300), spacing=dp(15))
 
         title = Label(
             text='No Keyboard Connected',
-            font_size='20sp',
+            font_size=dp(20),
             bold=True,
             size_hint_y=None,
-            height=40
+            height=dp(40)
         )
         content.add_widget(title)
 
@@ -232,22 +262,26 @@ class ConnectionOverlay(BoxLayout):
 
         instructions = Label(
             text=instruction_text,
-            font_size='14sp',
+            font_size=dp(14),
             halign='center',
-            valign='middle',
+            valign='top',
             size_hint_y=None,
-            height=120
+            height=dp(120)
         )
         instructions.bind(size=instructions.setter('text_size'))
         content.add_widget(instructions)
 
+        # Status label - needs more height for multi-line status messages
         self.status_label = Label(
             text='Searching for devices...',
-            font_size='12sp',
+            font_size=dp(12),
             color=(0.6, 0.6, 0.6, 1),
+            halign='center',
+            valign='top',
             size_hint_y=None,
-            height=30
+            height=dp(100)  # Taller to handle multi-line status text
         )
+        self.status_label.bind(size=self.status_label.setter('text_size'))
         content.add_widget(self.status_label)
 
         self.add_widget(content)
@@ -319,6 +353,16 @@ class MainLayout(BoxLayout):
         self.exercise = ExerciseView()
         exercise_tab.add_widget(self.exercise)
         self.tabs.add_widget(exercise_tab)
+        self._exercise_tab = exercise_tab
+
+        # Explicitly switch to Touch tab to avoid double-highlight
+        def _fix_tabs(dt):
+            for th in self.tabs.tab_list:
+                th.state = 'normal'
+            touch_tab.state = 'down'
+            self.tabs.switch_to(touch_tab)
+        from kivy.clock import Clock
+        Clock.schedule_once(_fix_tabs, 0)
 
         # Debug tab removed from mobile - too technical for end users
         # Tab 6: Debug (GPIO diagnostics)
@@ -466,13 +510,16 @@ class MainLayout(BoxLayout):
 
                 # Load device config
                 self.config_panel.device = self.device
+                self.config_panel._on_save_callback = self._save_with_stream_restart
                 self.config_panel.load_from_device()
 
                 # Set device for chord editor
                 self.chord_map.device = self.device
 
                 # Auto-start streaming
+                print(f"[CONNECT] connected, starting stream", flush=True)
                 self._start_stream()
+                print(f"[CONNECT] streaming={self._streaming}", flush=True)
             elif _ANDROID:
                 # On Android, connect() returning False might mean permission pending
                 self.connection_overlay.status_label.text = (
@@ -503,6 +550,29 @@ class MainLayout(BoxLayout):
 
         self._auto_connect()
 
+    def _save_with_stream_restart(self, reset=False):
+        """Save to flash (or reset), stopping/restarting stream around it."""
+        import threading
+        was_streaming = self._streaming
+        print(f"[SAVE] was_streaming={was_streaming}, connected={self.device.is_connected() if self.device else False}", flush=True)
+        self._stop_stream()
+        def _do():
+            import time
+            time.sleep(0.1)
+            print(f"[SAVE] after stop, connected={self.device.is_connected() if self.device else False}", flush=True)
+            if reset:
+                self.device.reset_defaults()
+                from kivy.clock import Clock
+                Clock.schedule_once(lambda dt: self.config_panel.load_from_device(), 0)
+            else:
+                self.config_panel._flush_pending_config()
+                self.device.save_to_flash()
+            if was_streaming:
+                time.sleep(0.2)
+                ok = self._start_stream()
+                print(f"[SAVE] stream restarted={ok}", flush=True)
+        threading.Thread(target=_do, daemon=True).start()
+
     def _start_stream(self):
         """Start touch data streaming"""
         if not self.device or not self.device.is_connected():
@@ -520,9 +590,15 @@ class MainLayout(BoxLayout):
     @mainthread
     def _on_touch_frame(self, frame: TouchFrame):
         """Handle incoming touch frame (called from background thread)"""
+        if not hasattr(self, '_frame_debug_count'):
+            self._frame_debug_count = 0
+        self._frame_debug_count += 1
+        if self._frame_debug_count <= 3 or (frame.buttons and self._frame_debug_count % 100 == 0):
+            print(f"[FRAME] #{self._frame_debug_count} buttons=0x{frame.buttons:04x}", flush=True)
         self.touch_vis.update(frame)
-        # Route chord events to exercise view
-        self.exercise.on_chord_event(frame.buttons)
+        # Route chord events to exercise view only when Learn tab is active
+        if self.tabs.current_tab == self._exercise_tab:
+            self.exercise.on_chord_event(frame.buttons)
 
 
 class NChorderApp(App):

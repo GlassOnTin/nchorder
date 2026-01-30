@@ -241,7 +241,7 @@ class ChordTreeNode(BoxLayout, TreeViewNode):
         super().__init__(**kwargs)
         self.orientation = 'horizontal'
         self.size_hint_y = None
-        self.height = 28
+        self.height = dp(40)  # Use dp for proper scaling on high-DPI screens
         self.entry = entry  # ChordEntry if this is a leaf with output
         self._long_press_event = None
         self._touch_start = None
@@ -325,9 +325,11 @@ class ChordTreeView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
+        # Ensure this widget expands to fill available space
+        self.size_hint = (1, 1)
 
-        # Scrollable tree
-        self.scroll = ScrollView()
+        # Scrollable tree - must also expand
+        self.scroll = ScrollView(size_hint=(1, 1))
         self.tree = TreeView(
             root_options={'text': 'Chords'},
             hide_root=True,
@@ -992,7 +994,9 @@ class ChordMapView(BoxLayout):
             self.status_label.text = 'No device connected'
             return
 
-        # Build config bytes
+        self.status_label.text = 'Uploading...'
+
+        # Build config bytes on main thread (fast)
         header = bytearray(self._config.header)
         struct.pack_into('<H', header, 8, len(self._config.entries))
 
@@ -1000,7 +1004,34 @@ class ChordMapView(BoxLayout):
         for entry in self._config.entries:
             data += entry.to_bytes()
 
-        if self.device.upload_config(data):
-            self.status_label.text = 'Config uploaded!'
-        else:
-            self.status_label.text = 'Upload failed'
+        # Run upload in background thread to avoid blocking UI
+        import threading
+        def _do_upload():
+            try:
+                was_streaming = getattr(self.device, '_streaming', False)
+                callback = getattr(self.device, '_stream_callback', None)
+                self.device.stop_stream()
+                import time
+                time.sleep(0.1)  # Let serial settle after stopping stream
+
+                success = self.device.upload_config(data)
+            except Exception as e:
+                print(f"[UPLOAD-THREAD] exception: {e}", flush=True)
+                success = False
+
+            # Update UI immediately
+            from kivy.clock import Clock
+            Clock.schedule_once(
+                lambda dt: setattr(self.status_label, 'text',
+                                   'Config uploaded!' if success else 'Upload failed'), 0)
+
+            # Resume streaming after UI update (non-critical)
+            try:
+                if was_streaming and callback:
+                    import time
+                    time.sleep(0.2)
+                    self.device.start_stream(callback=callback, rate_hz=60)
+            except Exception:
+                pass
+
+        threading.Thread(target=_do_upload, daemon=True).start()

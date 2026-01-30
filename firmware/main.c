@@ -82,6 +82,8 @@
 #include "nrf_ble_gatt.h"
 #include "nrf_ble_qwr.h"
 #include "nrf_pwr_mgmt.h"
+#include "nrf_sdm.h"
+#include "nrf_soc.h"
 #include "peer_manager_handler.h"
 #if NRF_BLE_LESC_ENABLED
 #include "nrf_ble_lesc.h"
@@ -100,6 +102,7 @@
 #include "nchorder_chords.h"
 #include "nchorder_hid.h"
 #include "nchorder_usb.h"
+#include "nchorder_cdc.h"
 #include "nchorder_led.h"
 #include "nchorder_flash.h"
 #include "nchorder_i2c.h"
@@ -135,7 +138,8 @@ void HardFault_Handler(void)
     volatile uint32_t *crash = (volatile uint32_t *)0x20030090;
     crash[0] = 0xFA010001;  // HardFault marker
 
-    // Blink red+blue LED forever
+    // Blink LED forever to indicate crash
+#if defined(BOARD_XIAO_NRF52840)
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 26));  // Red
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));   // Blue
     while (1) {
@@ -146,6 +150,20 @@ void HardFault_Handler(void)
         nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 6));   // Blue ON
         for (volatile int j = 0; j < 300000; j++);
     }
+#elif defined(BOARD_TWIDDLER4)
+    // Twiddler4: blink WS2812 LED power enable as crash indicator
+    nrf_gpio_cfg_output(PIN_LED_POWER);
+    while (1) {
+        nrf_gpio_pin_set(PIN_LED_POWER);
+        for (volatile int j = 0; j < 300000; j++);
+        nrf_gpio_pin_clear(PIN_LED_POWER);
+        for (volatile int j = 0; j < 300000; j++);
+    }
+#else
+    while (1) {
+        for (volatile int j = 0; j < 300000; j++);
+    }
+#endif
 }
 
 // Global error handler - capture crash info before reset
@@ -233,9 +251,9 @@ static inline void wdt_feed(void)
 #define PNP_ID_PRODUCT_VERSION              0x0100                                     /**< Product Version (1.0.0 community). */
 
 #define APP_ADV_FAST_INTERVAL               0x0028                                     /**< Fast advertising interval (in units of 0.625 ms. This value corresponds to 25 ms.). */
-#define APP_ADV_SLOW_INTERVAL               0x0C80                                     /**< Slow advertising interval (in units of 0.625 ms. This value corrsponds to 2 seconds). */
+#define APP_ADV_SLOW_INTERVAL               0x0320                                     /**< Slow advertising interval (in units of 0.625 ms. 0x320=500ms for debug). */
 
-#define APP_ADV_FAST_DURATION               3000                                       /**< The advertising duration of fast advertising in units of 10 milliseconds. */
+#define APP_ADV_FAST_DURATION               18000                                      /**< The advertising duration of fast advertising in units of 10 milliseconds (3 min for debug). */
 #define APP_ADV_SLOW_DURATION               18000                                      /**< The advertising duration of slow advertising in units of 10 milliseconds. */
 
 
@@ -348,6 +366,7 @@ STATIC_ASSERT(sizeof(buffer_list_t) % 4 == 0);
 APP_TIMER_DEF(m_battery_timer_id);                                  /**< Battery timer. */
 APP_TIMER_DEF(m_key_sequence_timer_id);                             /**< Timer for multi-char key sequence delays. */
 APP_TIMER_DEF(m_hid_test_timer_id);                                 /**< DEBUG: Timer to test HID send path. */
+APP_TIMER_DEF(m_debug_status_timer_id);                             /**< DEBUG: Periodic BLE status timer. */
 
 /** Key sequence state for multi-character macros */
 static const multichar_key_t *m_key_sequence = NULL;                /**< Current key sequence being sent. */
@@ -496,11 +515,83 @@ static void advertising_start(bool erase_bonds)
         delete_bonds();
     }
 
+    // Ensure HFCLK is running (required for radio)
+    ret = sd_clock_hfclk_request();
+    if (ret != NRF_SUCCESS) {
+        NRF_LOG_ERROR("HFCLK request failed: 0x%08X", ret);
+        nchorder_cdc_debug("HFCLK request FAILED: 0x%08X\r\n", ret);
+    }
+
+    // Wait for HFCLK to actually be running (up to 100ms timeout)
+    uint32_t hfclk_running = 0;
+    for (int i = 0; i < 100; i++) {
+        sd_clock_hfclk_is_running(&hfclk_running);
+        if (hfclk_running) break;
+        nrf_delay_ms(1);
+    }
+    NRF_LOG_INFO("HFCLK running after wait: %d", hfclk_running);
+    nchorder_cdc_debug("HFCLK running: %d\r\n", hfclk_running);
+    nrf_delay_ms(50);  // Allow CDC TX to complete before next message
+
+    if (!hfclk_running) {
+        NRF_LOG_ERROR("HFCLK failed to start - radio will not work!");
+        nchorder_cdc_debug("*** HFCLK FAILED - BLE DISABLED ***\r\n");
+        // Flash red-yellow pattern for HFCLK failure
+        nchorder_led_set(0, LED_COLOR_RED);
+        nchorder_led_set(1, LED_COLOR_YELLOW);
+        nchorder_led_set(2, LED_COLOR_RED);
+        nchorder_led_update();
+        return;  // Don't try to advertise without HFCLK
+    }
+
     NRF_LOG_INFO("Starting advertising (erase_bonds=%d)", erase_bonds);
+    nchorder_cdc_debug("BLE: Starting adv...\r\n");
+    nrf_delay_ms(50);
+
     ret = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
 
-    if (ret != NRF_SUCCESS && ret != NRF_ERROR_INVALID_STATE)
+    nchorder_cdc_debug("BLE: adv_start ret=0x%08X\r\n", ret);
+    nrf_delay_ms(50);
+
+    if (ret == NRF_SUCCESS)
     {
+        NRF_LOG_INFO("BLE advertising started OK");
+
+        // Get and print BLE address for debugging
+        ble_gap_addr_t addr;
+        ret_code_t addr_ret = sd_ble_gap_addr_get(&addr);
+        if (addr_ret == NRF_SUCCESS) {
+            NRF_LOG_INFO("BLE addr type=%d", addr.addr_type);
+            NRF_LOG_HEXDUMP_INFO(addr.addr, 6);
+            nchorder_cdc_debug("BLE OK! Addr: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                addr.addr[5], addr.addr[4], addr.addr[3],
+                addr.addr[2], addr.addr[1], addr.addr[0]);
+            nrf_delay_ms(50);
+        } else {
+            nchorder_cdc_debug("BLE OK! (addr get failed: 0x%08X)\r\n", addr_ret);
+            nrf_delay_ms(50);
+        }
+
+        // Flash green to indicate BLE OK
+        nchorder_led_set(0, LED_COLOR_GREEN);
+        nchorder_led_set(1, LED_COLOR_GREEN);
+        nchorder_led_set(2, LED_COLOR_GREEN);
+        nchorder_led_update();
+    }
+    else if (ret == NRF_ERROR_INVALID_STATE)
+    {
+        NRF_LOG_WARNING("BLE advertising already active");
+        nchorder_cdc_debug("BLE: already advertising\r\n");
+    }
+    else
+    {
+        NRF_LOG_ERROR("BLE advertising FAILED: 0x%08X", ret);
+        nchorder_cdc_debug("BLE FAILED: 0x%08X\r\n", ret);
+        // Flash red to indicate BLE failure
+        nchorder_led_set(0, LED_COLOR_RED);
+        nchorder_led_set(1, LED_COLOR_RED);
+        nchorder_led_set(2, LED_COLOR_RED);
+        nchorder_led_update();
         APP_ERROR_CHECK(ret);
     }
 }
@@ -624,15 +715,17 @@ static void hid_test_timeout_handler(void * p_context)
 {
     UNUSED_PARAMETER(p_context);
 
-    // DEBUG: Toggle LED to show timer is firing (use BLUE P0.06)
+    // DEBUG: Toggle LED to show timer is firing
+#if defined(BOARD_XIAO_NRF52840)
     static bool timer_led_on = false;
     timer_led_on = !timer_led_on;
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 6));  // XIAO Blue LED
     if (timer_led_on) {
-        nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 6));  // LED on (active low)
+        nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 6));
     } else {
-        nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));    // LED off
+        nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));
     }
+#endif
 
     if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
     {
@@ -649,6 +742,42 @@ static void hid_test_timeout_handler(void * p_context)
     else
     {
         NRF_LOG_DEBUG("HID TEST: No connection");
+    }
+}
+
+
+/**@brief DEBUG: Timer handler to show BLE status periodically.
+ * Blinks LED and prints status via CDC.
+ * LED2: blinks green/blue (timer heartbeat)
+ * LED0: green=CDC open, red=CDC closed
+ */
+static void debug_status_timeout_handler(void * p_context)
+{
+    UNUSED_PARAMETER(p_context);
+
+    // Toggle LED2 between green and blue (heartbeat)
+    static bool blink_state = false;
+    blink_state = !blink_state;
+    nchorder_led_set(2, blink_state ? LED_COLOR_BLUE : LED_COLOR_GREEN);
+
+    // LED0: Show CDC port state
+    nchorder_led_set(0, nchorder_cdc_is_open() ? LED_COLOR_GREEN : LED_COLOR_RED);
+    nchorder_led_update();
+
+    // Print BLE status
+    ble_gap_addr_t addr;
+    ret_code_t ret = sd_ble_gap_addr_get(&addr);
+
+    nchorder_cdc_debug("STATUS: conn=%d adv=%d\r\n",
+        m_conn_handle != BLE_CONN_HANDLE_INVALID,
+        m_advertising.adv_mode_current);
+
+    nrf_delay_ms(20);
+
+    if (ret == NRF_SUCCESS) {
+        nchorder_cdc_debug("Addr: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+            addr.addr[5], addr.addr[4], addr.addr[3],
+            addr.addr[2], addr.addr[1], addr.addr[0]);
     }
 }
 
@@ -762,6 +891,12 @@ static void timers_init(void)
     err_code = app_timer_create(&m_hid_test_timer_id,
                                 APP_TIMER_MODE_REPEATED,
                                 hid_test_timeout_handler);
+    APP_ERROR_CHECK(err_code);
+
+    // DEBUG: Create status timer for BLE debugging
+    err_code = app_timer_create(&m_debug_status_timer_id,
+                                APP_TIMER_MODE_REPEATED,
+                                debug_status_timeout_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -1110,6 +1245,10 @@ static void timers_start(void)
     // DEBUG: HID test timer disabled - uncomment to test HID send path
     // err_code = app_timer_start(m_hid_test_timer_id, APP_TIMER_TICKS(5000), NULL);
     // APP_ERROR_CHECK(err_code);
+
+    // DEBUG: Start BLE status timer (blinks LED every 3 seconds)
+    err_code = app_timer_start(m_debug_status_timer_id, APP_TIMER_TICKS(3000), NULL);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -1636,7 +1775,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             // disabling alert 3. signal - used for capslock ON
             err_code = bsp_indication_set(BSP_INDICATE_ALERT_OFF);
             APP_ERROR_CHECK(err_code);
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));  // Blue OFF
+#if defined(BOARD_XIAO_NRF52840)
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 6));  // Blue OFF (XIAO RGB LED)
+#endif
 
             break; // BLE_GAP_EVT_DISCONNECTED
 
@@ -1789,6 +1930,15 @@ static void ble_stack_init(void)
 
     err_code = nrf_sdh_enable_request();
     APP_ERROR_CHECK(err_code);
+
+    // Enable DC-DC mode for better power efficiency (E73 module has required inductors)
+    // This also ensures proper voltage for radio operation
+    err_code = sd_power_dcdc_mode_set(NRF_POWER_DCDC_ENABLE);
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_WARNING("DC-DC enable failed: 0x%08X", err_code);
+    } else {
+        NRF_LOG_INFO("DC-DC mode enabled");
+    }
 
     // Wait for LFCLK to stabilize after SoftDevice starts it
     simple_delay_ms(100);
@@ -1954,6 +2104,12 @@ static void advertising_init(void)
     APP_ERROR_CHECK(err_code);
 
     ble_advertising_conn_cfg_tag_set(&m_advertising, APP_BLE_CONN_CFG_TAG);
+
+    // Set TX power to maximum (+8 dBm) for better range
+    err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, 8);
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_WARNING("Failed to set TX power: 0x%08X", err_code);
+    }
 }
 
 
@@ -2244,6 +2400,134 @@ static void send_consumer_report(uint16_t usage_code)
 }
 
 
+/**@brief Handle system chord actions.
+ *
+ * System chords control firmware functions like sleep, status display, etc.
+ *
+ * @param[in] action  The system chord action to perform.
+ */
+static void handle_system_chord(system_chord_action_t action)
+{
+    switch (action)
+    {
+        case SYS_CHORD_SLEEP:
+            NRF_LOG_INFO("System: SLEEP");
+            nchorder_cdc_debug("System: Sleep mode\r\n");
+            // Flash LEDs to indicate sleep
+            nchorder_led_set(0, LED_COLOR_MAGENTA);
+            nchorder_led_set(1, LED_COLOR_OFF);
+            nchorder_led_set(2, LED_COLOR_MAGENTA);
+            nchorder_led_update();
+            // TODO: Implement actual sleep mode
+            // For now, just indicate the chord was recognized
+            break;
+
+        case SYS_CHORD_BATTERY_LEVEL:
+            NRF_LOG_INFO("System: BATTERY LEVEL");
+            nchorder_cdc_debug("System: Battery level display\r\n");
+            // Flash LEDs to indicate battery (placeholder - shows full)
+            nchorder_led_set(0, LED_COLOR_GREEN);
+            nchorder_led_set(1, LED_COLOR_GREEN);
+            nchorder_led_set(2, LED_COLOR_GREEN);
+            nchorder_led_update();
+            // TODO: Read actual battery voltage via ADC
+            break;
+
+        case SYS_CHORD_DISPLAY_KB_LEDS:
+            NRF_LOG_INFO("System: KEYBOARD LEDs");
+            nchorder_cdc_debug("System: Keyboard LED state\r\n");
+            // TODO: Display NumLock/CapsLock/ScrollLock state from HID output report
+            nchorder_led_set(0, LED_COLOR_CYAN);
+            nchorder_led_set(1, LED_COLOR_CYAN);
+            nchorder_led_set(2, LED_COLOR_CYAN);
+            nchorder_led_update();
+            break;
+
+        case SYS_CHORD_PRINT_STATUS:
+            NRF_LOG_INFO("System: PRINT STATUS");
+            nchorder_cdc_debug("=== nChorder Status ===\r\n");
+            nchorder_cdc_debug("FW: %s\r\n", NCHORDER_FW_VERSION);
+            nchorder_cdc_debug("Board: %s\r\n", BOARD_NAME);
+            nchorder_cdc_debug("Keys: %d  Mouse: %d  Macros: %d  Consumer: %d\r\n",
+                chord_get_mapping_count(),
+                chord_get_mouse_mapping_count(),
+                chord_get_multichar_count(),
+                chord_get_consumer_count());
+            // Flash white to indicate status printed
+            nchorder_led_set(0, LED_COLOR_WHITE);
+            nchorder_led_set(1, LED_COLOR_WHITE);
+            nchorder_led_set(2, LED_COLOR_WHITE);
+            nchorder_led_update();
+            break;
+
+        case SYS_CHORD_CYCLE_NAV_MODE:
+            NRF_LOG_INFO("System: CYCLE NAV MODE");
+            nchorder_cdc_debug("System: Cycle navigation mode\r\n");
+            // TODO: Cycle between mouse/scroll/arrow modes
+            nchorder_led_set(0, LED_COLOR_BLUE);
+            nchorder_led_set(1, LED_COLOR_OFF);
+            nchorder_led_set(2, LED_COLOR_BLUE);
+            nchorder_led_update();
+            break;
+
+        case SYS_CHORD_CYCLE_CONFIG:
+            NRF_LOG_INFO("System: CYCLE CONFIG");
+            nchorder_cdc_debug("System: Cycle config file\r\n");
+            // TODO: Cycle between stored config files
+            nchorder_led_set(0, LED_COLOR_YELLOW);
+            nchorder_led_set(1, LED_COLOR_OFF);
+            nchorder_led_set(2, LED_COLOR_YELLOW);
+            nchorder_led_update();
+            break;
+
+        case SYS_CHORD_CYCLE_BLE_SLOT:
+            NRF_LOG_INFO("System: CYCLE BLE SLOT");
+            nchorder_cdc_debug("System: Cycle BLE device slot\r\n");
+            // TODO: Cycle between BLE device slots (for multi-device pairing)
+            nchorder_led_set(0, LED_COLOR_BLUE);
+            nchorder_led_set(1, LED_COLOR_BLUE);
+            nchorder_led_set(2, LED_COLOR_OFF);
+            nchorder_led_update();
+            break;
+
+        case SYS_CHORD_ERASE_BLE_PAIRS:
+            NRF_LOG_INFO("System: ERASE BLE PAIRS");
+            nchorder_cdc_debug("System: Erasing all BLE pairings...\r\n");
+            // Flash red to warn
+            nchorder_led_set(0, LED_COLOR_RED);
+            nchorder_led_set(1, LED_COLOR_RED);
+            nchorder_led_set(2, LED_COLOR_RED);
+            nchorder_led_update();
+            // Delete all bonds
+            ret_code_t err = pm_peers_delete();
+            if (err == NRF_SUCCESS) {
+                nchorder_cdc_debug("BLE pairings erased\r\n");
+            } else {
+                nchorder_cdc_debug("Erase failed: 0x%08X\r\n", err);
+            }
+            break;
+
+        case SYS_CHORD_BOOTLOADER:
+            NRF_LOG_INFO("System: BOOTLOADER");
+            nchorder_cdc_debug("System: Entering bootloader...\r\n");
+            // Flash magenta to indicate bootloader entry
+            nchorder_led_set(0, LED_COLOR_MAGENTA);
+            nchorder_led_set(1, LED_COLOR_MAGENTA);
+            nchorder_led_set(2, LED_COLOR_MAGENTA);
+            nchorder_led_update();
+            nrf_delay_ms(500);
+            // Enter bootloader (DFU mode)
+            // Write magic value to GPREGRET and reset
+            sd_power_gpregret_set(0, 0xB1);  // Bootloader magic
+            NVIC_SystemReset();
+            break;
+
+        default:
+            break;
+    }
+}
+
+
 /**@brief Callback for button state changes from Twiddler buttons.
  *
  * @param[in] button_state  32-bit bitmask of currently pressed buttons
@@ -2261,6 +2545,15 @@ static void nchorder_button_callback(uint32_t button_state)
         chord_t chord = chord_get_completed(&m_chord_ctx);
 
         NRF_LOG_INFO("Chord completed: 0x%05X (%s)", chord, buttons_to_string(chord));
+
+        // Check for system chords first (highest priority)
+        system_chord_action_t sys_action = chord_check_system(chord);
+        if (sys_action != SYS_CHORD_NONE)
+        {
+            NRF_LOG_INFO("System chord: action=%d", sys_action);
+            handle_system_chord(sys_action);
+            return;
+        }
 
         // Try multi-char macro first (highest priority for text output)
         const multichar_key_t *macro_keys = NULL;
@@ -2492,6 +2785,21 @@ int main(void)
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 16));     // LED4 OFF
 #endif
 
+    // Debug: print BLE status on startup
+    NRF_LOG_INFO("BLE advertising started, device name: %s", DEVICE_NAME);
+
+    // Check SoftDevice and clock status
+    uint8_t sd_enabled = 0;
+    sd_softdevice_is_enabled(&sd_enabled);
+    NRF_LOG_INFO("SoftDevice enabled: %d", sd_enabled);
+
+    // Check if HFCLK is running (required for radio)
+    uint32_t hfclk_running = 0;
+    sd_clock_hfclk_is_running(&hfclk_running);
+    NRF_LOG_INFO("HFCLK running: %d", hfclk_running);
+
+    nchorder_cdc_debug("BLE: '%s' SD=%d HFCLK=%d\r\n", DEVICE_NAME, sd_enabled, hfclk_running);
+
     // Enter main loop.
     for (;;)
     {
@@ -2503,6 +2811,7 @@ int main(void)
 #if defined(BOARD_TWIDDLER4) || defined(BOARD_XIAO_NRF52840)
         nchorder_usb_process();  // Process USB events
         nchorder_usb_check_disconnect();  // Check for deferred activation
+        nchorder_cdc_process();  // Process deferred CDC operations (flash save)
 #endif
 
 #if defined(BOARD_TWIDDLER4) && 0  // DISABLED: optical sensor I2C not responding

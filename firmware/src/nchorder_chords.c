@@ -120,16 +120,35 @@ static const chord_mapping_t default_mappings[] = {
     {CHORD_F2L | CHORD_F2M, 0, HID_KEY_SPACE, 0},
     {CHORD_F3L | CHORD_F3M | CHORD_F3R, 0, HID_KEY_ENTER, 0},
     {CHORD_F4L | CHORD_F4M | CHORD_F4R, 0, HID_KEY_BACKSPACE, 0},
+
+    // F0 row (mouse buttons) - test mappings
+    {CHORD_F0L, 0, HID_KEY_X, 0},  // F0L -> 'x'
+    {CHORD_F0M, 0, HID_KEY_Y, 0},  // F0M -> 'y'
+    {CHORD_F0R, 0, HID_KEY_Z, 0},  // F0R -> 'z'
+
+    // T0 (extra thumb button) - test mapping
+    {CHORD_T0, 0, HID_KEY_0, 0},   // T0 -> '0'
+
+    // Expansion GPIOs (J3 header) - test mappings
+    {CHORD_EXT1, 0, HID_KEY_X, 0}, // EXT1 (P0.28) -> 'x'
+    {CHORD_EXT2, 0, HID_KEY_W, 0}, // EXT2 (P1.09) -> 'w'
 };
 
 void chord_init(chord_context_t *ctx)
 {
     memset(ctx, 0, sizeof(chord_context_t));
     ctx->state = CHORD_STATE_IDLE;
+    ctx->walk_mode = true;  // Default to walk mode for MirrorWalk compatibility
 
     // Load default mappings
     m_key_mapping_count = sizeof(default_mappings) / sizeof(default_mappings[0]);
     memcpy(m_key_mappings, default_mappings, sizeof(default_mappings));
+}
+
+void chord_set_walk_mode(chord_context_t *ctx, bool enable)
+{
+    ctx->walk_mode = enable;
+    NRF_LOG_INFO("Chord: walk_mode=%d", enable);
 }
 
 bool chord_update(chord_context_t *ctx, chord_t buttons)
@@ -143,6 +162,7 @@ bool chord_update(chord_context_t *ctx, chord_t buttons)
                 ctx->state = CHORD_STATE_BUILDING;
                 ctx->current_chord = buttons;
                 ctx->max_chord = buttons;
+                ctx->pending_chord = 0;
                 ctx->chord_fired = false;
                 ctx->press_time = app_timer_cnt_get();
             }
@@ -156,12 +176,28 @@ bool chord_update(chord_context_t *ctx, chord_t buttons)
                 chord_completed = true;
             } else if (buttons != ctx->current_chord) {
                 // Buttons changed
+                chord_t released = ctx->current_chord & ~buttons;  // Buttons that were released
+                chord_t pressed = buttons & ~ctx->current_chord;   // New buttons pressed
+
+                if (ctx->walk_mode && released != 0 && !ctx->chord_fired) {
+                    // Walk mode: some buttons released - fire the max chord
+                    ctx->pending_chord = ctx->max_chord;
+                    ctx->release_time = app_timer_cnt_get();
+                    ctx->chord_fired = true;
+                    chord_completed = true;
+
+                    // Start new chord with remaining buttons
+                    ctx->max_chord = buttons;
+                }
+
                 ctx->current_chord = buttons;
-                // Track maximum chord (all buttons ever pressed together)
-                ctx->max_chord |= buttons;
+
+                if (pressed != 0) {
+                    // New buttons added - expand max chord
+                    ctx->max_chord |= buttons;
+                    ctx->chord_fired = false;  // Allow firing again when these release
+                }
             }
-            // If buttons are stable, could transition to HELD state
-            // but for simplicity we just track max_chord
             break;
 
         case CHORD_STATE_HELD:
@@ -190,16 +226,66 @@ bool chord_update(chord_context_t *ctx, chord_t buttons)
 
 chord_t chord_get_completed(chord_context_t *ctx)
 {
+    // In walk mode, pending_chord is set when we fire on partial release
+    if (ctx->pending_chord != 0) {
+        chord_t result = ctx->pending_chord;
+        ctx->pending_chord = 0;
+        return result;
+    }
     return ctx->max_chord;
+}
+
+system_chord_action_t chord_check_system(chord_t chord)
+{
+    // Check system chords in priority order
+    // More specific chords (more buttons) should be checked first
+
+    // 3-button destructive actions (highest priority)
+    if (chord == SYS_CHORD_MASK_BOOTLOADER) {
+        return SYS_CHORD_BOOTLOADER;
+    }
+    if (chord == SYS_CHORD_MASK_ERASE_BLE_PAIRS) {
+        return SYS_CHORD_ERASE_BLE_PAIRS;
+    }
+    if (chord == SYS_CHORD_MASK_SLEEP) {
+        return SYS_CHORD_SLEEP;
+    }
+
+    // T0 + F1 row: Status display functions
+    if (chord == SYS_CHORD_MASK_DISPLAY_KB_LEDS) {
+        return SYS_CHORD_DISPLAY_KB_LEDS;
+    }
+    if (chord == SYS_CHORD_MASK_BATTERY_LEVEL) {
+        return SYS_CHORD_BATTERY_LEVEL;
+    }
+    if (chord == SYS_CHORD_MASK_PRINT_STATUS) {
+        return SYS_CHORD_PRINT_STATUS;
+    }
+
+    // T0 + F4 row: Mode and connection functions
+    if (chord == SYS_CHORD_MASK_CYCLE_NAV_MODE) {
+        return SYS_CHORD_CYCLE_NAV_MODE;
+    }
+    if (chord == SYS_CHORD_MASK_CYCLE_CONFIG) {
+        return SYS_CHORD_CYCLE_CONFIG;
+    }
+    if (chord == SYS_CHORD_MASK_CYCLE_BLE_SLOT) {
+        return SYS_CHORD_CYCLE_BLE_SLOT;
+    }
+
+    return SYS_CHORD_NONE;
 }
 
 const chord_mapping_t* chord_lookup_key(chord_t chord)
 {
     for (uint16_t i = 0; i < m_key_mapping_count; i++) {
         if (m_key_mappings[i].chord == chord) {
+            NRF_LOG_DEBUG("Lookup: chord 0x%05X found at %d, mod=0x%02X key=0x%02X",
+                          chord, i, m_key_mappings[i].modifiers, m_key_mappings[i].keycode);
             return &m_key_mappings[i];
         }
     }
+    NRF_LOG_INFO("Lookup: chord 0x%05X NOT FOUND in %d mappings", chord, m_key_mapping_count);
     return NULL;
 }
 
@@ -225,12 +311,16 @@ static uint32_t read_u32_le(const uint8_t *data) {
 }
 
 // Convert config modifier byte to HID modifier bits
+// MirrorWalk/community configs use bit 5 (0x20) for Shift
+// Some older formats may use bit 0 (0x01) for Shift
 static uint8_t config_mod_to_hid(uint8_t cfg_mod) {
     uint8_t hid_mod = 0;
-    if (cfg_mod & 0x01) hid_mod |= 0x02;  // Shift -> Left Shift
+    // Shift: support both bit 0 (old format) and bit 5 (MirrorWalk format)
+    if (cfg_mod & 0x01) hid_mod |= 0x02;  // Shift (bit 0)
+    if (cfg_mod & 0x20) hid_mod |= 0x02;  // Shift (bit 5 - MirrorWalk)
     if (cfg_mod & 0x02) hid_mod |= 0x01;  // Ctrl -> Left Ctrl
     if (cfg_mod & 0x04) hid_mod |= 0x04;  // Alt -> Left Alt
-    if (cfg_mod & 0x20) hid_mod |= 0x08;  // GUI -> Left GUI
+    if (cfg_mod & 0x08) hid_mod |= 0x08;  // GUI -> Left GUI (bit 3)
     return hid_mod;
 }
 
@@ -238,12 +328,14 @@ void chord_load_config(const uint8_t *config_data, size_t config_size)
 {
     // Validate minimum size
     if (config_data == NULL || config_size < CFG_HEADER_SIZE) {
+        NRF_LOG_WARNING("Config: Invalid size %d", config_size);
         return;  // Keep default mappings
     }
 
     // Read header fields
     uint16_t chord_count = read_u16_le(&config_data[CFG_CHORD_COUNT_OFF]);
     uint16_t string_table_offset = read_u16_le(&config_data[CFG_STRING_OFF_OFF]);
+    NRF_LOG_INFO("Config: Loading %d chords, string_off=0x%04X", chord_count, string_table_offset);
 
     // Validate chord count
     if (chord_count == 0 || chord_count > MAX_CHORD_MAPPINGS) {
@@ -284,8 +376,8 @@ void chord_load_config(const uint8_t *config_data, size_t config_size)
         uint16_t modifier = read_u16_le(&chord_ptr[4]);
         uint16_t keycode = read_u16_le(&chord_ptr[6]);
 
-        // Extract button chord (low 16 bits of bitmask)
-        chord_t chord = (chord_t)(bitmask & 0xFFFF);
+        // Extract button chord from bitmask (supports 22 buttons: 20 standard + 2 expansion)
+        chord_t chord = (chord_t)(bitmask & 0x3FFFFF);
 
         // Extract event type (low byte of modifier)
         uint8_t event_type = modifier & 0xFF;
@@ -337,7 +429,7 @@ void chord_load_config(const uint8_t *config_data, size_t config_size)
                     m_consumer_mappings[m_consumer_mapping_count].chord = chord;
                     m_consumer_mappings[m_consumer_mapping_count].usage_code = (uint16_t)(keycode & 0xFFFF);
                     m_consumer_mapping_count++;
-                    NRF_LOG_DEBUG("Consumer chord: 0x%04X -> usage 0x%04X",
+                    NRF_LOG_DEBUG("Consumer chord: 0x%05X -> usage 0x%04X",
                                   chord, keycode & 0xFFFF);
                 }
                 break;
@@ -349,18 +441,8 @@ void chord_load_config(const uint8_t *config_data, size_t config_size)
                 break;
 
             case CFG_EVENT_MULTICHAR:
-                // Multi-character string - store for later string table parsing
-                if (m_multichar_mapping_count < MAX_MULTICHAR_MAPPINGS) {
-                    m_multichar_mappings[m_multichar_mapping_count].chord = chord;
-                    m_multichar_mappings[m_multichar_mapping_count].keys_offset = 0;
-                    m_multichar_mappings[m_multichar_mapping_count].keys_count = 0;
-                    // keycode field is index into string table
-                    // Store temporarily in keys_offset, will resolve after parsing all chords
-                    m_multichar_mappings[m_multichar_mapping_count].keys_offset = (uint16_t)(keycode & 0xFFFF);
-                    m_multichar_mapping_count++;
-                } else {
-                    m_multichar_chords_skipped++;
-                }
+                // Multi-character string - DISABLED for now (skip these chords)
+                m_multichar_chords_skipped++;
                 break;
 
             default:

@@ -7,10 +7,16 @@
 
 #include "nchorder_cdc.h"
 #include "nchorder_config.h"
+#include "nchorder_chords.h"
+#include "nchorder_flash.h"
 
+#include <stdarg.h>
+#include "nrf_delay.h"
+#include <stdio.h>
 #include "app_usbd.h"
 #include "app_usbd_core.h"
 #include "app_usbd_cdc_acm.h"
+#include "app_scheduler.h"
 #include "nrf_log.h"
 
 // CDC interface and endpoint numbers
@@ -24,7 +30,7 @@
 
 // RX/TX buffer sizes
 #define CDC_RX_BUFFER_SIZE  64
-#define CDC_TX_BUFFER_SIZE  64
+#define CDC_TX_BUFFER_SIZE  128  // Must be >= touch frame size (71 bytes)
 
 // Forward declaration
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const *p_inst,
@@ -50,6 +56,14 @@ static uint8_t m_rx_buffer[CDC_RX_BUFFER_SIZE];
 static uint8_t m_tx_buffer[CDC_TX_BUFFER_SIZE];
 static volatile bool m_tx_busy = false;
 
+// Config upload buffer (4KB max - typical configs are 1-3KB)
+#define CONFIG_UPLOAD_MAX_SIZE  4096
+static uint8_t m_upload_buffer[CONFIG_UPLOAD_MAX_SIZE];
+static uint16_t m_upload_expected_size = 0;
+static uint16_t m_upload_received = 0;
+static bool m_upload_in_progress = false;
+static volatile bool m_flash_save_pending = false;  // Deferred to main loop
+
 // Runtime configuration with defaults
 static cdc_config_t m_config = {
     .threshold_press = 500,
@@ -67,8 +81,17 @@ static cdc_config_t m_config = {
  */
 static ret_code_t cdc_send(const uint8_t *data, size_t len)
 {
-    if (!m_cdc_port_open || m_tx_busy) {
+    if (!m_cdc_port_open) {
         return NRF_ERROR_INVALID_STATE;
+    }
+
+    // Wait for previous TX to complete (needed for rapid upload ACKs)
+    uint32_t timeout = 1000;  // ~1ms at 1us delay
+    while (m_tx_busy && timeout--) {
+        nrf_delay_us(1);
+    }
+    if (m_tx_busy) {
+        return NRF_ERROR_BUSY;
     }
 
     if (len > CDC_TX_BUFFER_SIZE) {
@@ -98,6 +121,31 @@ static void cdc_send_nak(void)
 {
     uint8_t nak = CDC_RSP_NAK;
     cdc_send(&nak, 1);
+}
+
+/**
+ * Debug print function - sends text via CDC
+ * Only sends when streaming (debug view) - suppressed during command mode
+ * to avoid corrupting command/response protocol.
+ */
+void nchorder_cdc_debug(const char *fmt, ...)
+{
+    if (m_tx_busy || !m_cdc_streaming) return;
+
+    char buf[128];
+    va_list args;
+    va_start(args, fmt);
+    int len = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    if (len > 0 && len < CDC_TX_BUFFER_SIZE) {
+        memcpy(m_tx_buffer, buf, len);
+        m_tx_busy = true;
+        ret_code_t ret = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, len);
+        if (ret != NRF_SUCCESS) {
+            m_tx_busy = false;
+        }
+    }
 }
 
 /**
@@ -176,21 +224,116 @@ static void process_command(const uint8_t *data, size_t len)
         }
 
         case CDC_CMD_SET_CHORDS: {
-            // TODO: Implement chord upload
-            // data[1-2] = offset, data[3-4] = count, data[5+] = chord data
+            // Legacy command - redirect to new upload protocol
+            // For now, return NAK - use UPLOAD_START/DATA/COMMIT instead
             cdc_send_nak();
             break;
         }
 
         case CDC_CMD_SAVE_FLASH: {
-            // TODO: Implement flash save
-            cdc_send_nak();
+            // Defer flash save to main loop (FDS requires non-interrupt context)
+            if (m_upload_received > 0) {
+                m_flash_save_pending = true;
+                NRF_LOG_INFO("CDC: Flash save deferred to main loop (%d bytes)",
+                            m_upload_received);
+                cdc_send_ack();
+            } else {
+                NRF_LOG_WARNING("CDC: No data to save");
+                cdc_send_nak();
+            }
             break;
         }
 
         case CDC_CMD_LOAD_FLASH: {
-            // TODO: Implement flash load
-            cdc_send_nak();
+            // Load config from flash
+            uint16_t loaded = nchorder_flash_load_config(m_upload_buffer, CONFIG_UPLOAD_MAX_SIZE);
+            if (loaded > 0) {
+                m_upload_received = loaded;
+                m_upload_expected_size = loaded;
+                chord_load_config(m_upload_buffer, loaded);
+                cdc_send_ack();
+            } else {
+                cdc_send_nak();
+            }
+            break;
+        }
+
+        case CDC_CMD_UPLOAD_START: {
+            // Start config upload: [size_lo, size_hi]
+            if (len < 3) {
+                cdc_send_nak();
+                break;
+            }
+            uint16_t total_size = data[1] | (data[2] << 8);
+            if (total_size == 0 || total_size > CONFIG_UPLOAD_MAX_SIZE) {
+                NRF_LOG_WARNING("CDC: Upload size invalid: %d", total_size);
+                cdc_send_nak();
+                break;
+            }
+            m_upload_expected_size = total_size;
+            m_upload_received = 0;
+            m_upload_in_progress = true;
+            NRF_LOG_INFO("CDC: Upload started, expecting %d bytes", total_size);
+            cdc_send_ack();
+            break;
+        }
+
+        case CDC_CMD_UPLOAD_DATA: {
+            // Append data chunk: [data...]
+            if (!m_upload_in_progress) {
+                NRF_LOG_WARNING("CDC: Upload data without start");
+                cdc_send_nak();
+                break;
+            }
+            uint16_t chunk_size = len - 1;  // Exclude command byte
+            if (m_upload_received + chunk_size > m_upload_expected_size) {
+                NRF_LOG_WARNING("CDC: Upload overflow");
+                m_upload_in_progress = false;
+                cdc_send_nak();
+                break;
+            }
+            memcpy(&m_upload_buffer[m_upload_received], &data[1], chunk_size);
+            m_upload_received += chunk_size;
+            NRF_LOG_DEBUG("CDC: Received %d/%d bytes", m_upload_received, m_upload_expected_size);
+            cdc_send_ack();
+            break;
+        }
+
+        case CDC_CMD_UPLOAD_COMMIT: {
+            // Finalize upload and parse config
+            if (!m_upload_in_progress) {
+                NRF_LOG_WARNING("CDC: Commit without active upload");
+                cdc_send_nak();
+                break;
+            }
+            if (m_upload_received != m_upload_expected_size) {
+                NRF_LOG_WARNING("CDC: Incomplete upload: %d/%d",
+                               m_upload_received, m_upload_expected_size);
+                m_upload_in_progress = false;
+                cdc_send_nak();
+                break;
+            }
+            // Parse the config
+            chord_load_config(m_upload_buffer, m_upload_received);
+            uint16_t key_count = chord_get_mapping_count();
+            uint16_t macro_count = chord_get_multichar_count();
+            uint16_t consumer_count = chord_get_consumer_count();
+            NRF_LOG_INFO("CDC: Config loaded: %d keys, %d macros, %d consumer",
+                        key_count, macro_count, consumer_count);
+            m_upload_in_progress = false;
+            cdc_send_ack();
+            break;
+        }
+
+        case CDC_CMD_UPLOAD_ABORT: {
+            // Cancel upload
+            if (m_upload_in_progress) {
+                NRF_LOG_INFO("CDC: Upload aborted");
+            }
+            m_upload_in_progress = false;
+            m_upload_received = 0;
+            m_upload_expected_size = 0;
+            cdc_send_ack();
             break;
         }
 
@@ -273,7 +416,35 @@ uint32_t nchorder_cdc_init(void)
 
 void nchorder_cdc_process(void)
 {
-    // Main loop processing - streaming is handled in button driver callback
+    // Handle deferred flash save (must run in main loop context for FDS)
+    if (m_flash_save_pending) {
+        m_flash_save_pending = false;
+
+        if (nchorder_flash_save_config(m_upload_buffer, m_upload_received)) {
+            // Wait for async FDS completion
+            bool success = false;
+            for (int i = 0; i < 500; i++) {
+                app_sched_execute();
+                flash_op_status_t status = nchorder_flash_get_status();
+                if (status == FLASH_OP_DONE) {
+                    nchorder_flash_clear_status();
+                    success = true;
+                    break;
+                } else if (status == FLASH_OP_ERROR) {
+                    nchorder_flash_clear_status();
+                    break;
+                }
+                nrf_delay_ms(10);
+            }
+            if (success) {
+                NRF_LOG_INFO("CDC: Config saved to flash");
+            } else {
+                NRF_LOG_WARNING("CDC: Flash save timeout/failed");
+            }
+        } else {
+            NRF_LOG_WARNING("CDC: Flash save_config failed");
+        }
+    }
 }
 
 bool nchorder_cdc_is_open(void)
@@ -285,6 +456,9 @@ bool nchorder_cdc_is_streaming(void)
 {
     return m_cdc_streaming && m_cdc_port_open;
 }
+
+// Verify frame size at compile time
+_Static_assert(sizeof(cdc_touch_frame_t) == 71, "Frame size mismatch!");
 
 void nchorder_cdc_send_touch_frame(const cdc_touch_frame_t *frame)
 {

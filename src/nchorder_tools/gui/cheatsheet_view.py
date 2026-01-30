@@ -295,8 +295,8 @@ class CheatSheetGrid(ScrollView):
     MIN_COLS = 1  # Allow single column for narrow screens
     MAX_COLS = 6
     # Use dp() for density-independent sizing
-    # 200dp ensures 1-2 columns on phones, 3-4 on tablets
-    MIN_CARD_WIDTH_DP = 200
+    # Pixel 8 Pro portrait is ~448dp wide - use 400dp for single column
+    MIN_CARD_WIDTH_DP = 400
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

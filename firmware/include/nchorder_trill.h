@@ -27,7 +27,15 @@
 #define TRILL_CMD_IDAC              5
 #define TRILL_CMD_BASELINE_UPDATE   6
 #define TRILL_CMD_MINIMUM_SIZE      7
+#define TRILL_CMD_EVENT_MODE        9
+#define TRILL_CMD_CHANNEL_MASK_LOW  10
+#define TRILL_CMD_CHANNEL_MASK_HIGH 11
+#define TRILL_CMD_RESET             12
+#define TRILL_CMD_FORMAT            13
+#define TRILL_CMD_TIMER_PERIOD      14
+#define TRILL_CMD_SCAN_TRIGGER      15
 #define TRILL_CMD_AUTO_SCAN         16
+#define TRILL_CMD_ACK               254
 #define TRILL_CMD_IDENTIFY          255
 
 // Buffer offsets

@@ -12,6 +12,7 @@
 #include "app_usbd.h"
 #include "app_usbd_core.h"
 #include "app_usbd_hid_kbd.h"
+#include "app_usbd_hid_kbd_internal.h"
 #include "nrf_drv_clock.h"
 #include "nrf_delay.h"
 #include "nrf_log.h"
@@ -215,8 +216,8 @@ uint32_t nchorder_usb_init(void)
 
 uint32_t nchorder_usb_start(void)
 {
-#if defined(BOARD_XIAO_NRF52840) || defined(BOARD_TWIDDLER4)
-    // XIAO/Twiddler4: Skip power events (crashes with SoftDevice), manually start USB
+#if defined(BOARD_XIAO_NRF52840) || defined(BOARD_TWIDDLER4) || defined(BOARD_IS_DK)
+    // XIAO/Twiddler4/DK: Skip power events (crashes with SoftDevice), manually start USB
     // USB is always connected when device is plugged in
     NRF_LOG_INFO("USB: Manual start (no power detection)");
     app_usbd_enable();
@@ -265,58 +266,26 @@ bool nchorder_usb_is_connected(void)
 
 uint32_t nchorder_usb_key_press(uint8_t modifiers, uint8_t keycode)
 {
-    ret_code_t ret;
-
     if (!nchorder_usb_is_connected())
     {
         return NRF_ERROR_INVALID_STATE;
     }
 
-    // Clear any previous state
-    UNUSED_RETURN_VALUE(app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-        APP_USBD_HID_KBD_MODIFIER_LEFT_CTRL, false));
-    UNUSED_RETURN_VALUE(app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-        APP_USBD_HID_KBD_MODIFIER_LEFT_SHIFT, false));
-    UNUSED_RETURN_VALUE(app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-        APP_USBD_HID_KBD_MODIFIER_LEFT_ALT, false));
-    UNUSED_RETURN_VALUE(app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-        APP_USBD_HID_KBD_MODIFIER_LEFT_UI, false));
+    // Access internal context directly to set the modifier BEFORE
+    // triggering any transfer. This avoids the race condition where
+    // setting modifier via API triggers a transfer without the key.
+    app_usbd_hid_kbd_ctx_t * p_ctx =
+        &((app_usbd_hid_kbd_t *)&m_app_hid_kbd)->specific.p_data->ctx;
 
-    // Set modifiers
-    if (modifiers & 0x01)  // Left Ctrl
-    {
-        ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-            APP_USBD_HID_KBD_MODIFIER_LEFT_CTRL, true);
-        if (ret != NRF_SUCCESS) return ret;
-    }
-    if (modifiers & 0x02)  // Left Shift
-    {
-        ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-            APP_USBD_HID_KBD_MODIFIER_LEFT_SHIFT, true);
-        if (ret != NRF_SUCCESS) return ret;
-    }
-    if (modifiers & 0x04)  // Left Alt
-    {
-        ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-            APP_USBD_HID_KBD_MODIFIER_LEFT_ALT, true);
-        if (ret != NRF_SUCCESS) return ret;
-    }
-    if (modifiers & 0x08)  // Left GUI
-    {
-        ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
-            APP_USBD_HID_KBD_MODIFIER_LEFT_UI, true);
-        if (ret != NRF_SUCCESS) return ret;
-    }
+    // Set modifier byte directly (HID format: bit 0=LCtrl, bit 1=LShift, etc.)
+    // This does NOT trigger a transfer - we just modify internal state
+    p_ctx->rep.modifier = modifiers;
 
-    // Press key
+    // Now use the SDK API to set the key - this WILL trigger a transfer
+    // but the modifier is already set, so the report includes both
     if (keycode != 0)
     {
-        ret = app_usbd_hid_kbd_key_control(&m_app_hid_kbd, keycode, true);
-        if (ret != NRF_SUCCESS)
-        {
-            NRF_LOG_WARNING("USB: key_control press failed: %d", ret);
-            return ret;
-        }
+        return app_usbd_hid_kbd_key_control(&m_app_hid_kbd, keycode, true);
     }
 
     return NRF_SUCCESS;
@@ -331,19 +300,18 @@ uint32_t nchorder_usb_key_release(void)
         return NRF_ERROR_INVALID_STATE;
     }
 
-    // Release all keys (clear the keyboard state)
-    // The SDK tracks pressed keys, so we need to release them all
+    // Release all keys
     for (uint8_t key = 0x04; key < 0x68; key++)
     {
-        UNUSED_RETURN_VALUE(app_usbd_hid_kbd_key_control(&m_app_hid_kbd, key, false));
+        app_usbd_hid_kbd_key_control(&m_app_hid_kbd, key, false);
     }
 
     // Clear all modifiers
-    ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
+    app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
         APP_USBD_HID_KBD_MODIFIER_LEFT_CTRL, false);
-    ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
+    app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
         APP_USBD_HID_KBD_MODIFIER_LEFT_SHIFT, false);
-    ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
+    app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
         APP_USBD_HID_KBD_MODIFIER_LEFT_ALT, false);
     ret = app_usbd_hid_kbd_modifier_state_set(&m_app_hid_kbd,
         APP_USBD_HID_KBD_MODIFIER_LEFT_UI, false);

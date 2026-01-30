@@ -23,6 +23,7 @@
 #include "app_scheduler.h"
 #include "nrf_log.h"
 #include "nrf_gpio.h"
+#include "nrf_drv_wdt.h"
 #include "SEGGER_RTT.h"
 
 // Simple abs for int16_t (avoid stdlib dependency)
@@ -599,52 +600,42 @@ static void poll_scheduled_handler(void *p_event_data, uint16_t event_size)
             }
         }
 
-        // Bar sensors (1D)
+        // Bar sensors (1D) - fill all touches
         trill_sensor_t *bar_l = &m_sensors[MUX_CH_COL_L];
-        if (bar_l->initialized && bar_l->num_touches > 0) {
-            frame.bar0_pos = bar_l->touches[0].position;
-            frame.bar0_size = bar_l->touches[0].size;
+        for (int i = 0; i < CDC_MAX_BAR_TOUCHES; i++) {
+            if (bar_l->initialized && i < bar_l->num_touches) {
+                frame.bar0[i].pos = bar_l->touches[i].position;
+                frame.bar0[i].size = bar_l->touches[i].size;
+            } else {
+                frame.bar0[i].pos = 0xFFFF;  // No touch marker
+                frame.bar0[i].size = 0;
+            }
         }
 
         trill_sensor_t *bar_m = &m_sensors[MUX_CH_COL_M];
-        if (bar_m->initialized && bar_m->num_touches > 0) {
-            frame.bar1_pos = bar_m->touches[0].position;
-            frame.bar1_size = bar_m->touches[0].size;
+        for (int i = 0; i < CDC_MAX_BAR_TOUCHES; i++) {
+            if (bar_m->initialized && i < bar_m->num_touches) {
+                frame.bar1[i].pos = bar_m->touches[i].position;
+                frame.bar1[i].size = bar_m->touches[i].size;
+            } else {
+                frame.bar1[i].pos = 0xFFFF;
+                frame.bar1[i].size = 0;
+            }
         }
 
         trill_sensor_t *bar_r = &m_sensors[MUX_CH_COL_R];
-        if (bar_r->initialized && bar_r->num_touches > 0) {
-            frame.bar2_pos = bar_r->touches[0].position;
-            frame.bar2_size = bar_r->touches[0].size;
+        for (int i = 0; i < CDC_MAX_BAR_TOUCHES; i++) {
+            if (bar_r->initialized && i < bar_r->num_touches) {
+                frame.bar2[i].pos = bar_r->touches[i].position;
+                frame.bar2[i].size = bar_r->touches[i].size;
+            } else {
+                frame.bar2[i].pos = 0xFFFF;
+                frame.bar2[i].size = 0;
+            }
         }
 
-        // Current button state (or diagnostic every 100 frames)
-        static uint16_t diag_counter2 = 0;
-        if ((diag_counter2++ % 100) == 0) {
-            // Diagnostic frame: encode sensor status and scan results
-            // buttons: 0xF000 marker + init/touch flags
-            // bar positions: scan results (I2C addresses found)
-            uint16_t diag = 0xF000;  // Magic marker
-            diag |= (m_sensors[0].initialized ? 0x0001 : 0);
-            diag |= (m_sensors[1].initialized ? 0x0002 : 0);
-            diag |= (m_sensors[2].initialized ? 0x0004 : 0);
-            diag |= (m_sensors[3].initialized ? 0x0008 : 0);
-            diag |= (m_sensors[0].num_touches > 0 ? 0x0010 : 0);
-            diag |= (m_sensors[1].num_touches > 0 ? 0x0020 : 0);
-            diag |= (m_sensors[2].num_touches > 0 ? 0x0040 : 0);
-            diag |= (m_sensors[3].num_touches > 0 ? 0x0080 : 0);
-            diag |= (m_sensors[0].is_2d ? 0x0100 : 0);
-            frame.buttons = diag;
-
-            // Encode scan results in bar positions (repurpose for diagnostic)
-            // Format: bar0_pos = (ch0_addr << 8) | ch1_addr
-            //         bar1_pos = (ch2_addr << 8) | ch3_addr
-            frame.bar0_pos = ((uint16_t)m_scan_results[0] << 8) | m_scan_results[1];
-            frame.bar1_pos = ((uint16_t)m_scan_results[2] << 8) | m_scan_results[3];
-            frame.bar2_pos = 0xDEAD;  // Marker to identify diagnostic frame
-        } else {
-            frame.buttons = m_button_state;
-        }
+        // Button state from processed sensor readings
+        frame.buttons = m_button_state;
 
         nchorder_cdc_send_touch_frame(&frame);
     }
@@ -732,6 +723,7 @@ uint32_t buttons_init(void)
     simple_delay_ms(10);
     nrf_gpio_pin_set(PIN_TRILL_RESET);    // Back to high
     simple_delay_ms(500);                  // Wait for sensors to boot
+    nrf_drv_wdt_feed();                    // Keep watchdog happy during long init
 
     // Probe MUX directly at address 0x70 (before any channel selection)
     NRF_LOG_INFO("Trill buttons: Probing MUX at 0x%02X...", I2C_ADDR_MUX);
@@ -767,6 +759,7 @@ uint32_t buttons_init(void)
             SEGGER_RTT_printf(0, "NO_DEVICES");
         }
         SEGGER_RTT_printf(0, "\n");
+        nrf_drv_wdt_feed();  // Feed watchdog after each channel scan
     }
     SEGGER_RTT_printf(0, "SCAN:Complete ch0=0x%02X ch1=0x%02X ch2=0x%02X ch3=0x%02X\n",
         m_scan_results[0], m_scan_results[1], m_scan_results[2], m_scan_results[3]);
@@ -839,6 +832,7 @@ uint32_t buttons_init(void)
             NRF_LOG_WARNING("Ch%d: Reset failed: 0x%04X", ch, err_code);
         }
         simple_delay_ms(500);  // Wait for sensor to recover
+        nrf_drv_wdt_feed();    // Keep watchdog happy during long sensor init
 
         // Check for FE header - if not FE, try assuming Bar sensor anyway
         if (identify_buf[0] == 0xFE) {
@@ -979,7 +973,7 @@ uint32_t buttons_init(void)
     return NRF_SUCCESS;
 }
 
-uint16_t buttons_scan(void)
+uint32_t buttons_scan(void)
 {
     return m_button_state;
 }
@@ -994,7 +988,7 @@ bool buttons_any_pressed(void)
     return m_button_state != 0;
 }
 
-const char* buttons_to_string(uint16_t bitmask)
+const char* buttons_to_string(uint32_t bitmask)
 {
     static char buffer[64];
     char *ptr = buffer;

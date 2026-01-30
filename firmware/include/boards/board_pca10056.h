@@ -70,6 +70,10 @@
 #define PIN_I2C_SCL       NRF_GPIO_PIN_MAP(0, 27)  // Arduino header
 #define TOUCHPAD_I2C_ADDR 0x74                     // Placeholder
 
+// I2C MUX (not present on DK - stub definitions for compile)
+#define PIN_MUX_RESET     0xFF                     // Not connected
+#define I2C_ADDR_MUX      0x70                     // Dummy address (not used)
+
 // ============================================================================
 // LED PINS
 // ============================================================================
@@ -82,6 +86,8 @@
 // Use LED1 for status, LED2-4 as RGB substitute (active low on DK)
 #define PIN_LED_STATUS    NRF_GPIO_PIN_MAP(0, DK_LED_1)
 #define PIN_LED_DATA      NRF_GPIO_PIN_MAP(0, DK_LED_2)  // Won't work for WS2812, but won't crash
+#define PIN_LED_POWER     PIN_UNUSED                     // No power transistor on DK
+#define LED_COUNT         1                              // Single status LED
 
 // DK LEDs are directly driven (not WS2812), so LED driver will be non-functional
 // This is expected - we just want BLE/USB to work for testing

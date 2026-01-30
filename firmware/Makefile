@@ -73,6 +73,7 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/drivers/src/prs/nrfx_prs.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_uart.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_uarte.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_wdt.c \
   $(SDK_ROOT)/components/libraries/bsp/bsp.c \
   $(SDK_ROOT)/components/libraries/bsp/bsp_btn_ble.c \
   $(PROJ_DIR)/main.c \
@@ -153,7 +154,9 @@ else
     $(PROJ_DIR)/src/nchorder_led.c \
     $(PROJ_DIR)/src/nchorder_i2c.c \
     $(PROJ_DIR)/src/nchorder_optical.c \
-    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
+    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c \
+    $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twi.c \
+    $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_twi.c
 endif
 
 # Include folders

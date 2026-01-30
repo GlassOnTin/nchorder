@@ -55,10 +55,11 @@
 #define PIN_BTN_F3M     NRF_GPIO_PIN_MAP(0, 10)  // P0.10 (E73 pin 43)
 #define PIN_BTN_F3R     NRF_GPIO_PIN_MAP(0, 9)   // P0.09 (E73 pin 41)
 
-// Finger Row 4 (pinky) - CORRECTED via empirical GPIO testing (Jan 2026)
-#define PIN_BTN_F4L     NRF_GPIO_PIN_MAP(0, 15)  // P0.15 - empirically verified
-#define PIN_BTN_F4M     NRF_GPIO_PIN_MAP(0, 20)  // P0.20 - empirically verified
-#define PIN_BTN_F4R     NRF_GPIO_PIN_MAP(0, 17)  // P0.17 - empirically verified
+// Finger Row 4 (pinky) - CORRECTED via F1M+F4* chord testing (Jan 2026)
+// Physical buttons map: F4L->P0.20, F4M->P0.17, F4R->P0.15
+#define PIN_BTN_F4L     NRF_GPIO_PIN_MAP(0, 20)  // P0.20 - physical F4L
+#define PIN_BTN_F4M     NRF_GPIO_PIN_MAP(0, 17)  // P0.17 - physical F4M
+#define PIN_BTN_F4R     NRF_GPIO_PIN_MAP(0, 15)  // P0.15 - physical F4R
 
 // Expansion GPIOs on J3 header (active-low, directly accessible for bodge wires)
 #define PIN_BTN_EXT1    NRF_GPIO_PIN_MAP(0, 28)  // P0.28 (E73 pin 4, J3) - can bodge to F0L

@@ -26,6 +26,7 @@ classifiers = [
 northern-chorder = "nchorder_tools.cli:main"
 nchorder = "nchorder_tools.cli:main"
 nchorder-gui = "nchorder_tools.gui.app:main"
+nchorder-debug = "nchorder_tools.gui.debug_view:main"
 
 [project.optional-dependencies]
 dev = [

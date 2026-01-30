@@ -1,8 +1,8 @@
 /**
  * Northern Chorder - Button Scanning Driver
  *
- * GPIO-based button input handling with interrupt-driven detection
- * All 16 buttons are on GPIO Port 0 with internal pull-ups (active-low)
+ * GPIO-based button input handling with polling detection
+ * Twiddler 4: 19 buttons (4 thumb + 5x3 finger) with internal pull-ups (active-low)
  */
 
 #ifndef NCHORDER_BUTTONS_H
@@ -16,16 +16,15 @@
  * Button callback type
  * Called when button state changes (after debouncing)
  *
- * @param button_state 16-bit bitmask of currently pressed buttons
- *                     Bit 0 = T1 (N), Bit 1 = F1L, etc.
+ * @param button_state 32-bit bitmask of currently pressed buttons
+ *                     Bit 0 = T1, Bit 1 = F1L, ... Bit 16 = F0L, etc.
  *                     1 = pressed, 0 = released
  */
-typedef void (*buttons_callback_t)(uint16_t button_state);
+typedef void (*buttons_callback_t)(uint32_t button_state);
 
 /**
  * Initialize button GPIO pins
- * Configures all 16 button pins as inputs with pull-ups
- * Sets up GPIOTE for interrupt-driven detection
+ * Configures all button pins as inputs with pull-ups
  *
  * @return 0 on success, error code on failure
  */
@@ -33,12 +32,12 @@ uint32_t buttons_init(void);
 
 /**
  * Scan current button state
- * Reads all 16 GPIO pins and returns active-high bitmask
+ * Reads all GPIO pins and returns active-high bitmask
  * (GPIO is active-low, this function inverts for convenience)
  *
- * @return 16-bit bitmask of pressed buttons (1 = pressed)
+ * @return 32-bit bitmask of pressed buttons (1 = pressed)
  */
-uint16_t buttons_scan(void);
+uint32_t buttons_scan(void);
 
 /**
  * Register callback for button state changes
@@ -62,6 +61,6 @@ bool buttons_any_pressed(void);
  * @param bitmask Button state bitmask
  * @return Human-readable string like "T1+F1M+F2R"
  */
-const char* buttons_to_string(uint16_t bitmask);
+const char* buttons_to_string(uint32_t bitmask);
 
 #endif // NCHORDER_BUTTONS_H

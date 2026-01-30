@@ -301,9 +301,9 @@ class ExerciseDisplay(Widget):
         self.canvas.after.clear()
 
         if not self.target_text:
-            # Show placeholder
+            # Show placeholder - use dp() for proper scaling
             with self.canvas.after:
-                label = CoreLabel(text='Press Start to begin', font_size=18)
+                label = CoreLabel(text='Press Start to begin', font_size=dp(24))
                 label.refresh()
                 texture = label.texture
                 Color(0.5, 0.5, 0.5, 1)
@@ -314,9 +314,9 @@ class ExerciseDisplay(Widget):
                 )
             return
 
-        # Draw scrolling text display
+        # Draw scrolling text display - use dp() for scaling
         with self.canvas.after:
-            font_size = 28
+            font_size = dp(24)
             char_width = font_size * 0.65  # Monospace width
 
             # Calculate visible window - cursor at 1/4 from left for look-ahead
@@ -458,11 +458,13 @@ class ExerciseView(BoxLayout):
         self._always_show_hint = False  # Always show chord hint mode
         self._last_pressed_chord = 0  # Track last pressed chord for showing wrong buttons
         self._current_chars = []  # Current subset of characters being practiced
+        self._all_lesson_chars = []  # All characters available in current lesson
         self._permutation_queue = []  # Queue of 3-letter combinations to practice
         self._completed_count = 0  # Total combinations completed across all rounds
         self._missed_char = None  # Character that was missed, to reinforce in next target
         self._fixed_row = None  # Which row is fixed (e.g., 'F1')
         self._fixed_col = None  # Which column of fixed row (e.g., 'L', 'M', 'R')
+        self._varying_row = None  # Which row varies
 
         # Toolbar
         toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(44), spacing=dp(8))
@@ -472,22 +474,20 @@ class ExerciseView(BoxLayout):
         self.group_spinner = Spinner(
             text=lesson_names[0] if lesson_names else 'F1+F2',
             values=lesson_names,
-            size_hint_x=0.3
+            size_hint_x=0.25
         )
+        self.group_spinner.bind(text=self._on_lesson_changed)
 
-        # Subset size selector (how many unique letters to practice)
-        subset_box = BoxLayout(orientation='horizontal', size_hint_x=0.25, spacing=5)
-        subset_box.add_widget(Label(text='Letters:', size_hint_x=0.4))
-        self.subset_spinner = Spinner(
-            text='3',
-            values=['2', '3', '4', '5', '6'],
-            size_hint_x=0.6
+        # Characters dropdown - shows available char subsets for this lesson
+        self.chars_spinner = Spinner(
+            text='(select lesson)',
+            values=[],
+            size_hint_x=0.35
         )
-        subset_box.add_widget(self.subset_spinner)
+        self.chars_spinner.bind(text=self._on_chars_changed)
 
-        # Start/Reset button (Start when stopped, Reset when running)
-        self.start_btn = Button(text='Start', size_hint_x=0.15)
-        self.start_btn.bind(on_press=self._on_start_reset)
+        # Hidden subset_spinner for compatibility with progression code
+        self.subset_spinner = Spinner(text='2', values=['2', '3', '4', '5', '6'])
 
         # Show Hints toggle
         from kivy.uix.togglebutton import ToggleButton
@@ -495,8 +495,7 @@ class ExerciseView(BoxLayout):
         self.hint_toggle.bind(state=self._on_hint_toggle)
 
         toolbar.add_widget(self.group_spinner)
-        toolbar.add_widget(subset_box)
-        toolbar.add_widget(self.start_btn)
+        toolbar.add_widget(self.chars_spinner)
         toolbar.add_widget(self.hint_toggle)
         self.add_widget(toolbar)
 
@@ -522,12 +521,9 @@ class ExerciseView(BoxLayout):
         """Load chord config and group by lesson categories"""
         self.config = config
         self._group_chords_by_lesson()
+        self._update_chars_spinner()
 
-        # Update status with lesson info
-        lesson_name = self.group_spinner.text
-        entries = self._get_lesson_entries(lesson_name)
-        chars = self._get_printable_chars(entries)
-        self.status_label.text = f'{len(config.entries)} chords. {lesson_name}: {len(chars)} chars'
+        self.status_label.text = f'{len(config.entries)} chords loaded — select chars to begin'
 
     def _get_rows_for_chord(self, mask: int) -> set:
         """Get which rows/thumbs are used in a chord."""
@@ -632,87 +628,108 @@ class ExerciseView(BoxLayout):
             return self._permutation_queue.pop(0)
         return ''
 
-    def _on_start_reset(self, instance):
-        """Start exercise or reset if running"""
+    def _on_lesson_changed(self, spinner, text):
+        """Lesson spinner changed - rebuild chars dropdown"""
+        self._update_chars_spinner()
         if self._is_running:
             self._reset_exercise()
-        else:
-            self._start_exercise()
 
-    def _start_exercise(self):
-        """Start a new exercise"""
+    def _on_chars_changed(self, spinner, text):
+        """Chars spinner changed - prepare exercise (auto-starts on first chord)"""
+        if not text or text.startswith('('):
+            return
+        if self._is_running:
+            self._reset_exercise()
+        self._prepare_exercise_from_chars(text)
+
+    def _update_chars_spinner(self):
+        """Rebuild chars dropdown for current lesson."""
         if not self.config:
-            self.status_label.text = 'Load a chord config first'
             return
 
         lesson_name = self.group_spinner.text
-        subset_size = int(self.subset_spinner.text)
-
-        # Get available characters for this lesson
         entries = self._get_lesson_entries(lesson_name)
-
-        # For 2-row lessons, randomly choose which row is fixed
         rows_in_lesson = self._get_rows_in_lesson(lesson_name)
+
+        options = []
         if len(rows_in_lesson) == 2:
-            # Randomly choose fixed vs varying row
-            self._fixed_row = random.choice(rows_in_lesson)
-            self._varying_row = [r for r in rows_in_lesson if r != self._fixed_row][0]
-            # Randomly choose which column of the fixed row
-            self._fixed_col = random.choice(['L', 'M', 'R'])
-
-            # Filter entries to only those with fixed button + varying row
-            entries = self._filter_entries_by_fixed_button(
-                entries, self._fixed_row, self._fixed_col, self._varying_row
-            )
+            # Generate options for each fixed row+column combination
+            for fixed_row in rows_in_lesson:
+                varying_row = [r for r in rows_in_lesson if r != fixed_row][0]
+                for col in ['L', 'M', 'R']:
+                    filtered = self._filter_entries_by_fixed_button(
+                        entries, fixed_row, col, varying_row
+                    )
+                    chars = self._get_printable_chars(filtered)
+                    if chars:
+                        chars_str = ''.join(chars)
+                        label = f"{fixed_row}{col}+{varying_row}: {chars_str}"
+                        options.append(label)
         else:
-            self._fixed_row = None
-            self._fixed_col = None
-            self._varying_row = None
+            # Non-2-row lessons: just show all chars
+            chars = self._get_printable_chars(entries)
+            if chars:
+                options.append(f"All: {''.join(chars)}")
 
-        all_chars = self._get_printable_chars(entries)
+        self.chars_spinner.values = options
+        if options:
+            self.chars_spinner.text = options[0]
+        else:
+            self.chars_spinner.text = '(no chars)'
 
+    def _parse_chars_selection(self, text: str):
+        """Parse chars spinner text to extract fixed row/col/varying and chars.
+        Format: 'F1L+F2: etl' or 'All: etlnrs'"""
+        self._fixed_row = None
+        self._fixed_col = None
+        self._varying_row = None
+
+        if text.startswith('All:'):
+            chars_str = text.split(': ', 1)[1] if ': ' in text else ''
+            return list(chars_str)
+
+        # Parse 'F1L+F2: etl'
+        if '+' in text and ': ' in text:
+            parts = text.split(': ', 1)
+            btn_spec = parts[0]  # 'F1L+F2'
+            chars_str = parts[1]  # 'etl'
+
+            fixed_part, varying_part = btn_spec.split('+', 1)
+            self._fixed_row = fixed_part[:2]  # 'F1'
+            self._fixed_col = fixed_part[2:]  # 'L'
+            self._varying_row = varying_part  # 'F2'
+            return list(chars_str)
+
+        return []
+
+    def _prepare_exercise_from_chars(self, chars_text: str):
+        """Prepare exercise from chars spinner selection (doesn't start timer yet)."""
+        all_chars = self._parse_chars_selection(chars_text)
         if not all_chars:
-            self.status_label.text = f'No printable chars in {lesson_name} ({len(entries)} chords)'
             return
 
-        if len(all_chars) < subset_size:
-            # Use all available if fewer than requested
-            subset_size = len(all_chars)
-
-        # Select subset of characters (first N from available)
+        # Start with 2 chars, store full pool for progression
+        subset_size = min(2, len(all_chars))
+        self._all_lesson_chars = all_chars
         self._current_chars = all_chars[:subset_size]
+        self.subset_spinner.text = str(subset_size)
 
-        # Generate all permutations, shuffle them, and concatenate into one long string
+        # Generate exercise text
         perms = self._generate_permutations(self._current_chars)
         random.shuffle(perms)
         self._target_text = ''.join(perms)
         self._total_chars = len(self._target_text)
         self._completed_count = 0
 
-        if not self._target_text:
-            self.status_label.text = 'Failed to generate exercise'
-            return
-
-        # Reset state
+        # Reset state but don't start timer yet
         self._typed_text = ''
         self._cursor_pos = 0
         self._correct_count = 0
         self._total_typed = 0
-        self._start_time = time.time()
-        self._is_running = True
         self._prev_buttons = 0
+        self._is_running = False
 
-        # Update UI
-        self.start_btn.text = 'Reset'
-        total_perms = len(self._current_chars) ** 3
-
-        # Status message showing fixed button if applicable
-        if self._fixed_row:
-            fixed_btn = f'{self._fixed_row}{self._fixed_col}'
-            self.status_label.text = f"Fixed: {fixed_btn}, vary {self._varying_row} | Chars: {''.join(self._current_chars)} ({self._total_chars} total)"
-        else:
-            self.status_label.text = f"Practicing: {''.join(self._current_chars)} ({self._total_chars} chars)"
-
+        # Show target text so user can see what to type
         self.display.target_text = self._target_text
         self.display.typed_text = ''
         self.display.cursor_pos = 0
@@ -723,17 +740,40 @@ class ExerciseView(BoxLayout):
         self.stats.wpm = 0
         self.stats.accuracy = 100
 
-        # Start timer
-        self._timer_event = Clock.schedule_interval(self._update_timer, 0.1)
+        chars_str = ''.join(self._current_chars)
+        self.status_label.text = f"Ready: {chars_str} — chord any key to begin"
 
-        # Show initial hint if always-show mode is on
         if self._always_show_hint and self._target_text:
             self._show_chord_hint(self._target_text[0])
+
+    def _auto_start(self):
+        """Auto-start the exercise timer on first input."""
+        if self._is_running:
+            return
+        if not self._target_text:
+            return
+        self._start_time = time.time()
+        self._is_running = True
+        self._timer_event = Clock.schedule_interval(self._update_timer, 0.1)
+        chars_str = ''.join(self._current_chars)
+        self.status_label.text = f"Practicing: {chars_str}"
+
+    def _start_exercise(self):
+        """Start a new exercise from current chars spinner selection."""
+        if not self.config:
+            self.status_label.text = 'Load a chord config first'
+            return
+
+        chars_text = self.chars_spinner.text
+        if not chars_text or chars_text.startswith('('):
+            self.status_label.text = 'Select a character set'
+            return
+
+        self._prepare_exercise_from_chars(chars_text)
 
     def _reset_exercise(self):
         """Stop and reset exercise state"""
         self._is_running = False
-        self.start_btn.text = 'Start'
 
         if self._timer_event:
             self._timer_event.cancel()
@@ -764,7 +804,7 @@ class ExerciseView(BoxLayout):
         """Toggle always-show-hint mode"""
         self._always_show_hint = (state == 'down')
 
-        if self._always_show_hint and self._is_running:
+        if self._always_show_hint and self._target_text:
             # Show hint for current target
             if self._cursor_pos < len(self._target_text):
                 self._show_chord_hint(self._target_text[self._cursor_pos])
@@ -802,10 +842,6 @@ class ExerciseView(BoxLayout):
                 self._hint_popup.dismiss()
                 self._hint_popup = None
 
-        if not self._is_running:
-            self._prev_buttons = buttons
-            return
-
         # Detect any button release (button count decreased)
         prev_count = bin(self._prev_buttons).count('1')
         curr_count = bin(buttons).count('1')
@@ -831,8 +867,12 @@ class ExerciseView(BoxLayout):
             char: The character that was typed
             pressed_chord: The chord mask that was pressed (for showing wrong buttons)
         """
+        # Auto-start on first input if exercise is prepared but not running
         if not self._is_running:
-            return
+            if self._target_text:
+                self._auto_start()
+            else:
+                return
 
         if self._cursor_pos >= len(self._target_text):
             return
@@ -946,8 +986,13 @@ class ExerciseView(BoxLayout):
             self.display.typed_text = self._typed_text
 
     def _complete_exercise(self):
-        """Handle completion of full exercise - regenerate for next round"""
+        """Handle completion of full exercise - advance or regenerate"""
         self._completed_count += 1
+        accuracy = self.stats.accuracy
+
+        advanced = False
+        if accuracy >= 90:
+            advanced = self._try_advance()
 
         # Generate new shuffled set for next round
         perms = self._generate_permutations(self._current_chars)
@@ -955,15 +1000,17 @@ class ExerciseView(BoxLayout):
 
         # If there was a missed char, put combos starting with it first
         if self._missed_char:
-            # Move permutations starting with missed char to front
             missed_perms = [p for p in perms if p.startswith(self._missed_char)]
             other_perms = [p for p in perms if not p.startswith(self._missed_char)]
             perms = missed_perms + other_perms
             self._missed_char = None
 
         self._target_text = ''.join(perms)
+        self._total_chars = len(self._target_text)
         self._typed_text = ''
         self._cursor_pos = 0
+        self._correct_count = 0
+        self._total_typed = 0
 
         # Update display
         self.display.target_text = self._target_text
@@ -971,15 +1018,57 @@ class ExerciseView(BoxLayout):
         self.display.cursor_pos = 0
 
         # Update status
+        chars_str = ''.join(self._current_chars)
+        if advanced:
+            status = f"Added '{self._current_chars[-1]}' | Chars: {chars_str}"
+        elif accuracy < 90:
+            status = f"Round {self._completed_count + 1} (repeat, {accuracy:.0f}% accuracy) | Chars: {chars_str}"
+        else:
+            status = f"Round {self._completed_count + 1} | Chars: {chars_str}"
+
         if self._fixed_row:
             fixed_btn = f'{self._fixed_row}{self._fixed_col}'
-            self.status_label.text = f"Round {self._completed_count + 1} | Fixed: {fixed_btn}, vary {self._varying_row}"
-        else:
-            self.status_label.text = f"Round {self._completed_count + 1} | Chars: {''.join(self._current_chars)}"
+            status += f" | Fixed: {fixed_btn}"
+
+        self.status_label.text = status
 
         # Reset progress for new round
         self.stats.progress_current = 0
+        self.stats.progress_total = self._total_chars
+        self.stats.accuracy = 100
 
         # Show hint for new target if in always-show mode
         if self._always_show_hint and self._target_text:
             self._show_chord_hint(self._target_text[0])
+
+    def _try_advance(self) -> bool:
+        """Try to add the next character or advance to next lesson.
+        Returns True if advancement happened."""
+        # Add next char from current lesson pool
+        current_count = len(self._current_chars)
+        if current_count < len(self._all_lesson_chars):
+            self._current_chars = self._all_lesson_chars[:current_count + 1]
+            self.subset_spinner.text = str(len(self._current_chars))
+            return True
+
+        # All chars in current combo mastered - move to next combo in dropdown
+        values = self.chars_spinner.values
+        if values:
+            current_idx = values.index(self.chars_spinner.text) if self.chars_spinner.text in values else -1
+            if current_idx + 1 < len(values):
+                # Move to next char combo in same lesson
+                self.chars_spinner.text = values[current_idx + 1]
+                return True
+
+        # All combos in lesson mastered - advance to next lesson
+        current_lesson = self.group_spinner.text
+        lesson_names = [name for name, _, _ in LESSONS]
+        if current_lesson in lesson_names:
+            idx = lesson_names.index(current_lesson)
+            if idx + 1 < len(lesson_names):
+                self.group_spinner.text = lesson_names[idx + 1]
+                # _on_lesson_changed will update chars spinner
+                # Start with first option
+                return True
+
+        return False

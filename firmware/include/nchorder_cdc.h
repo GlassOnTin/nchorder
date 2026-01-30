@@ -28,6 +28,12 @@
 #define CDC_CMD_STREAM_START    0x10
 #define CDC_CMD_STREAM_STOP     0x11
 
+// Config upload commands (chunked transfer for .cfg files)
+#define CDC_CMD_UPLOAD_START    0x12  // [total_size_lo, total_size_hi] -> ACK/NAK
+#define CDC_CMD_UPLOAD_DATA     0x13  // [data...] -> ACK/NAK
+#define CDC_CMD_UPLOAD_COMMIT   0x14  // [] -> ACK/NAK (parses and activates config)
+#define CDC_CMD_UPLOAD_ABORT    0x15  // [] -> ACK (cancels in-progress upload)
+
 // Response codes
 #define CDC_RSP_ACK             0x06
 #define CDC_RSP_NAK             0x15
@@ -45,19 +51,25 @@
 // Touch stream sync byte
 #define CDC_STREAM_SYNC         0xAA
 
-// Touch stream frame (21 bytes)
+// Maximum touches per bar sensor
+#define CDC_MAX_BAR_TOUCHES     5
+
+// Bar touch data (4 bytes per touch)
+typedef struct __attribute__((packed)) {
+    uint16_t pos;           // Position (0xFFFF = no touch)
+    uint16_t size;          // Touch size/pressure
+} cdc_bar_touch_t;
+
+// Touch stream frame (71 bytes) - multitouch support
 typedef struct __attribute__((packed)) {
     uint8_t  sync;          // 0xAA
-    uint16_t thumb_x;       // 0-3200
-    uint16_t thumb_y;       // 0-3200
+    uint16_t thumb_x;       // Square sensor X (0-1800)
+    uint16_t thumb_y;       // Square sensor Y (0-1800)
     uint16_t thumb_size;    // Touch pressure/size
-    uint16_t bar0_pos;      // Left column position
-    uint16_t bar0_size;
-    uint16_t bar1_pos;      // Middle column position
-    uint16_t bar1_size;
-    uint16_t bar2_pos;      // Right column position
-    uint16_t bar2_size;
-    uint16_t buttons;       // 16-bit button bitmask
+    cdc_bar_touch_t bar0[CDC_MAX_BAR_TOUCHES];  // Left column (5 touches)
+    cdc_bar_touch_t bar1[CDC_MAX_BAR_TOUCHES];  // Middle column (5 touches)
+    cdc_bar_touch_t bar2[CDC_MAX_BAR_TOUCHES];  // Right column (5 touches)
+    uint32_t buttons;       // 32-bit button bitmask (20 buttons used)
 } cdc_touch_frame_t;
 
 // Runtime config structure
@@ -114,5 +126,10 @@ bool nchorder_cdc_set_config(uint8_t config_id, uint16_t value);
  * Check if touch streaming is enabled
  */
 bool nchorder_cdc_is_streaming(void);
+
+/**
+ * Debug print via CDC (for development)
+ */
+void nchorder_cdc_debug(const char *fmt, ...);
 
 #endif // NCHORDER_CDC_H
