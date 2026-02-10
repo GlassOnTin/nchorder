@@ -26,6 +26,10 @@ Each LED has 4 pads in a square (pin 1 = top-left, numbering anticlockwise):
 | 3 | BR | DO | Next LED's DI (on-board daisy chain) |
 | 4 | TR | DI | J6 pin 11 (P1.13) for first LED; previous LED's DO for L2/L3 |
 
+![Microscope closeup of L1 and L2 RGB LEDs](../../photos/twiddler4/06b_thumb_board_L1_L2_closeup.jpg)
+
+Microscope closeup of L1 and L2. L2 shows the die with bond wires and controller IC. L1 shows 4 reflector cups for the individual LED elements (R, G, B + controller).
+
 ### Power Architecture
 
 Unlike typical WS2812 setups where LEDs are always powered, the Twiddler 4 uses a **transistor-controlled power supply**:
