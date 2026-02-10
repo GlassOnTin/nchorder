@@ -34,6 +34,13 @@ The app bundles community chord layouts in the `configs/` folder:
 - **MirrorWalk** - Efficient layout optimized for English text (by Griatch)
 - **TabSpace** - Alternative layout with different finger assignments
 
+## Documentation
+
+See [docs/README.md](docs/README.md) for full documentation.
+
+- [**nchorder/**](docs/nchorder/) - XIAO hardware wiring and firmware notes
+- [**twiddler4/**](docs/twiddler4/) - Twiddler 4 reverse engineering (GPIO, I2C, config format)
+
 ## Overview
 
 This project provides:
@@ -151,13 +158,6 @@ The `configs/` directory contains:
 | `mirrorwalk_nomcc.cfg` | MirrorWalk without multi-character chords |
 | `mirrorwalk_source.csv` | Source CSV for MirrorWalk |
 | `mirrorwalk.json` | JSON export for web tutor |
-
-## Documentation
-
-See [docs/README.md](docs/README.md) for full documentation.
-
-- [**nchorder/**](docs/nchorder/) - XIAO hardware wiring and firmware notes
-- [**twiddler4/**](docs/twiddler4/) - Twiddler 4 reverse engineering (GPIO, I2C, config format)
 
 ## Directory Structure
 
