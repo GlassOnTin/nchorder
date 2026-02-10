@@ -87,29 +87,29 @@ The 12-pin FFC cable (J6) connects the thumb board to the main PCB (see [02-HARD
 
 J4 connects the sensor module flex PCB to the thumb board. Verified by continuity testing with sensor module and J4 desoldered (Feb 2026).
 
-| J4 Pin | nRF52840 | Main Board J6 | Signal |
-|--------|----------|---------------|--------|
+| J4 Pin | E73 Pad | nRF52840 | Signal |
+|--------|---------|----------|--------|
 | 1 | - | - | NC |
-| 2 | GND | J6.9 | Ground |
-| 3 | VCC | J6.10 | 3.3V power |
-| 4 | P0.31 | J6.8 (E73.9) | I2C SDA |
-| 5 | GND | J6.9 | Ground |
-| 6 | P0.30 | J6.7 | I2C SCL |
-| 7 | P1.11 | J6.5 (E73.1) | SHUTDOWN (verified to E73 pin 1) |
-| 8 | GND | J6.9 | Ground |
-| 9 | GND | J6.9 | Ground |
-| 10 | VCC | J6.10 | 3.3V power |
-| 11 | P0.30 | J6.7 (E73.10) | I2C SCL (duplicate of pin 6) |
+| 2 | - | GND | Ground |
+| 3 | - | VCC | 3.3V power |
+| 4 | E73.9 | P0.31 | I2C SDA |
+| 5 | - | GND | Ground |
+| 6 | E73.8 | P0.29 | T0 button (on sensor flex PCB) |
+| 7 | E73.1 | P1.11 | SHUTDOWN (active LOW) |
+| 8 | - | GND | Ground |
+| 9 | - | GND | Ground |
+| 10 | - | VCC | 3.3V power |
+| 11 | E73.10 | P0.30 | I2C SCL |
 | 12 | - | - | NC |
 | 13 | - | - | NC |
-| 14 | VCC | J6.10 | 3.3V power |
-| 15 | GND | J6.9 | Ground |
-| 16 | GND | J6.9 | Ground |
+| 14 | - | VCC | 3.3V power |
+| 15 | - | GND | Ground |
+| 16 | - | GND | Ground |
 | 17 | - | - | NC |
 
-Summary: 6x GND, 3x VCC, 1x SDA, 2x SCL, 1x SHUTDOWN, 4x NC.
+Summary: 6x GND, 3x VCC, 1x SDA, 1x SCL, 1x SHUTDOWN, 1x T0 button, 4x NC.
 
-**Note**: J6 pin numbering is reversed on the thumb board FFC connector, which caused initial mis-mapping. J4.7 (SHUTDOWN) and J4.11 (SCL) confirmed by direct continuity to E73 pads on the main board. T0 button (P0.29) does not appear on J4 - it must route to the sensor flex PCB via a separate thumb board trace.
+**Note**: Signal pins verified by direct continuity from J4 pads to E73 module pads on the main board (J4.4→E73.9, J4.6→E73.8, J4.7→E73.1, J4.11→E73.10). J5/J6 FFC connector screen print is inverted between main board and thumb board, making intermediate pin counting unreliable - always verify against E73 pads.
 
 ## Pin Mapping
 
@@ -126,7 +126,7 @@ Summary: 6x GND, 3x VCC, 1x SDA, 2x SCL, 1x SHUTDOWN, 4x NC.
 - **Product ID**: 0x88 (confirmed via register 0x00)
 - **Frequency**: 100kHz (tested working)
 
-**Note**: P0.29 connects to thumb button T0, which is physically mounted on the underside of the sensor module and soldered to the same flex PCB. It routes through J4 (sensor connector) pins 7 and 11.
+**Note**: P0.29 connects to thumb button T0, which is physically mounted on the underside of the sensor module and soldered to the same flex PCB. It routes through J4 pin 6.
 
 **Pull-up resistors**: SDA and SCL have ~600Ω pull-ups to 3.3V on the sensor module PCB.
 
