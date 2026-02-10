@@ -133,6 +133,10 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 
 Verified by continuity testing with E73 module desoldered (Feb 2026).
 
+![Thumb board front with optical sensor and J4 desoldered](../../photos/twiddler4/06a_thumb_board_desoldered.jpg)
+
+Thumb board front view with optical sensor module and J4 connector removed, showing J5 (sensor FPC connector), J4 footprint, 4 thumb buttons, and L1/L2/L3 RGB LEDs.
+
 ## E73-2G4M08S1C Module Pinout
 
 The E73 module exposes most nRF52840 GPIO pins on edge pads. Pinout determined by:
