@@ -99,7 +99,7 @@ J4 connects the sensor module flex PCB to the thumb board. Verified by continuit
 | 8 | GND | J6.9 | Ground |
 | 9 | GND | J6.9 | Ground |
 | 10 | VCC | J6.10 | 3.3V power |
-| 11 | P0.29? | J6.6? | T0 button? (needs re-verification) |
+| 11 | P0.30 | J6.7 (E73.10) | I2C SCL (duplicate of pin 6) |
 | 12 | - | - | NC |
 | 13 | - | - | NC |
 | 14 | VCC | J6.10 | 3.3V power |
@@ -107,9 +107,9 @@ J4 connects the sensor module flex PCB to the thumb board. Verified by continuit
 | 16 | GND | J6.9 | Ground |
 | 17 | - | - | NC |
 
-Summary: 6x GND, 3x VCC, 1x SDA, 1x SCL, 1x SHUTDOWN, 1x T0 button (P0.29, needs re-verification), 4x NC.
+Summary: 6x GND, 3x VCC, 1x SDA, 2x SCL, 1x SHUTDOWN, 4x NC.
 
-**Note**: J6 pin numbering is reversed on the thumb board FFC connector, which caused initial mis-mapping of some J4 signals. J4.7 → SHUTDOWN was confirmed by direct continuity to E73 pin 1 on the main board. J4.11 should be re-verified to E73 pads.
+**Note**: J6 pin numbering is reversed on the thumb board FFC connector, which caused initial mis-mapping. J4.7 (SHUTDOWN) and J4.11 (SCL) confirmed by direct continuity to E73 pads on the main board. T0 button (P0.29) does not appear on J4 - it must route to the sensor flex PCB via a separate thumb board trace.
 
 ## Pin Mapping
 
