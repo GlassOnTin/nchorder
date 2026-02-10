@@ -114,12 +114,24 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 | J3 | Header | Extended debug (GPIO exposed) |
 | J6 | FFC | 12-pin connection to thumb board |
 
-**J6 FFC Pinout** (12 pins):
-- 4 pins: Thumb button GPIO lines
-- 4 pins: Thumb sensor (P0.29-P0.31, P1.11)
-- 1 pin: LED signal (P1.13)
-- 2 pins: Power (VCC, GND)
-- 1 pin: Unknown/reserved
+**J6 FFC Pinout** (12 pins, pin 1 = left side near "J" silkscreen):
+
+| J6 Pin | E73 Pad | nRF52840 | Signal |
+|--------|---------|----------|--------|
+| 1 | 33 | P0.13 | T4 (SP) |
+| 2 | 16 | P0.08 | T3 (E) |
+| 3 | 18 | P0.04 | T2 (A) |
+| 4 | 11 | P0.00 | T1 (N) |
+| 5 | 1 | P1.11 | Sensor SHUTDOWN (active LOW) |
+| 6 | 8 | P0.29 | T0 (thumb button) |
+| 7 | 10 | P0.30 | I2C SCL (optical sensor) |
+| 8 | 9 | P0.31 | I2C SDA (optical sensor) |
+| 9 | 5 | GND | Ground |
+| 10 | 19 | VCC | 3.3V power |
+| 11 | 6 | P1.13 | LED Data |
+| 12 | Q2 col | - | LED Power (switched via Q1/Q2, P1.10) |
+
+Verified by continuity testing with E73 module desoldered (Feb 2026).
 
 ## E73-2G4M08S1C Module Pinout
 
@@ -146,7 +158,7 @@ The E73 module uses non-standard pin naming (AI0-AI7, XL1/XL2, etc.) that must b
 
 | E73 Pin | E73 Name | Ball | nRF52840 | Twiddler 4 Connection |
 |---------|----------|------|----------|----------------------|
-| 1 | NC | B19 | - | Not connected |
+| 1 | P1.11 | B19 | P1.11 | Sensor SHUTDOWN → J6 pin 5 (was listed as NC) |
 | 2 | P1.10 | A20 | P1.10 | LED data / Transistor Q1 |
 | 3 | P0.03 | B13 | P0.03 | Button F1L |
 | 4 | AI4 | B11 | P0.28 | Header J3 pin 5 |

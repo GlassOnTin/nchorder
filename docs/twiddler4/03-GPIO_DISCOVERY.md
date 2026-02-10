@@ -268,8 +268,9 @@ These are active-low with internal pull-ups, matching the standard button config
 |----------|---------|------|-------|
 | LED Power Enable | 2 | P1.10 | Controls Q1 transistor for LED strip power |
 | LED Data | 6 | P1.13 | RGB LED data line (see [04-LED_CONTROL.md](04-LED_CONTROL.md)) |
-| I2C SDA | - | P0.30 | J3 header, optical sensor |
-| I2C SCL | - | P0.31 | J3 header, optical sensor |
+| I2C SCL | 10 | P0.30 | J6 pin 7, optical sensor |
+| I2C SDA | 9 | P0.31 | J6 pin 8, optical sensor |
+| Sensor SHUTDOWN | 1 | P1.11 | J6 pin 5, active LOW |
 
 ## Key Lessons
 
