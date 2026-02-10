@@ -209,14 +209,14 @@ This section documents the troubleshooting process for educational purposes.
 ## Hardware Identification
 
 The exact LED part number is unknown. Characteristics:
+- 2020 package (2.0 x 2.0mm, ~1mm pin spacing)
+- 4 pads in square pattern (V+, GND, DO, DI)
 - 3 LEDs in series on single data line
 - RGB byte order (not GRB)
 - Compatible with ~1µs bit timing
 - Requires reset pulse of ~50µs
 
-Likely candidates:
-- SK6805 (RGB order variant)
-- Custom/generic addressable LED
+Likely candidate: **SK6805-2020** (RGB order variant) - matches package size, pin count, and color order.
 
 ## Files
 
