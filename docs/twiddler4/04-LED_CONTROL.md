@@ -15,6 +15,17 @@ The Twiddler 4 has **3 RGB addressable LEDs** on the thumb board, daisy-chained 
 | Power Enable | 2 | P1.10 | Controls Q1 transistor for LED power |
 | Data | 6 | P1.13 | Serial data line to LED strip |
 
+### LED Package Pinout (L1/L2/L3)
+
+Each LED has 4 pads in a square (pin 1 = top-left, numbering anticlockwise):
+
+| Pin | Position | Function | Connects to |
+|-----|----------|----------|-------------|
+| 1 | TL | V+ | J6 pin 12 (switched power via Q1/Q2) |
+| 2 | BL | GND | J6 pin 9 |
+| 3 | BR | DO | Next LED's DI (on-board daisy chain) |
+| 4 | TR | DI | J6 pin 11 (P1.13) for first LED; previous LED's DO for L2/L3 |
+
 ### Power Architecture
 
 Unlike typical WS2812 setups where LEDs are always powered, the Twiddler 4 uses a **transistor-controlled power supply**:
