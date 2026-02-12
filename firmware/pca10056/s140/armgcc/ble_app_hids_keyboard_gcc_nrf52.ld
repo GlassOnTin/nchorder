@@ -9,8 +9,8 @@ MEMORY
   /* Original: LENGTH = 0xd9000 (went to 0x100000, would overwrite bootloader) */
   FLASH (rx) : ORIGIN = 0x27000, LENGTH = 0xc9000
   RAM (rwx) :  ORIGIN = 0x20003000, LENGTH = 0x3d000
-  /* UICR region for configuration (NFCPINS at 0x1000120C) */
-  UICR (r) :   ORIGIN = 0x10001200, LENGTH = 0x100
+  /* UICR region for configuration (NFCPINS at 0x1000120C, REGOUT0 at 0x10001304) */
+  UICR (r) :   ORIGIN = 0x10001200, LENGTH = 0x108
 }
 
 SECTIONS
@@ -20,6 +20,13 @@ SECTIONS
   .uicr_nfcpins 0x1000120C :
   {
     KEEP(*(.uicr_nfcpins))
+  } > UICR
+
+  /* UICR REGOUT0 register at 0x10001304 - set VDD output voltage to 3.0V */
+  /* Default (erased) is 1.8V which is too low for button pull-ups */
+  .uicr_regout0 0x10001304 :
+  {
+    KEEP(*(.uicr_regout0))
   } > UICR
 }
 

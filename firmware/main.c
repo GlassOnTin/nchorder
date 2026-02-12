@@ -116,10 +116,14 @@
 // when programmed with the application.
 //
 // NFCPINS: 0xFFFFFFFE = Disable NFC, use P0.09/P0.10 as GPIO (for F3R/F3M buttons)
+// REGOUT0: 0xFFFFFFFC = Set VDD to 3.0V (erased default is 1.8V, too low for button pull-ups)
 // Note: UICR can only be written when erased (all 0xFF), so we set unused fields to 0xFF
 #if defined(BOARD_TWIDDLER4)
 __attribute__((section(".uicr_nfcpins"))) __attribute__((used))
 const uint32_t uicr_nfcpins = 0xFFFFFFFE;
+
+__attribute__((section(".uicr_regout0"))) __attribute__((used))
+const uint32_t uicr_regout0 = 0xFFFFFFFC;  // REGOUT0 bits[2:0] = 100 = 3.0V
 #endif
 
 // Simple busy-wait delay (avoid nrf_delay_ms which hangs without DWT init)
