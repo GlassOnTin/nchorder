@@ -81,7 +81,7 @@ Microscope views of the FPC flex cable showing trace routing and test pads.
 
 The 12-pin FFC cable (J6) connects the thumb board to the main PCB (see [02-HARDWARE_RE.md](02-HARDWARE_RE.md) for complete J6 pinout).
 
-**Note**: FFC pin numbering is reversed between main board (J6) and thumb board (J5). Pin 1 on the main board corresponds to pin 12 on the thumb board.
+**Note**: FFC pin numbering appears reversed between main board (J6) and thumb board (J5) only if one board is viewed upside down. With both boards oriented the same way, pin numbering is consistent.
 
 ### J4 Sensor Connector Pinout (17 pins)
 
