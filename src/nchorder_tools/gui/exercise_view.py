@@ -4,7 +4,7 @@ Exercise Mode View
 Typing tutor for chord keyboards that:
 - Groups chords by thumb button prefix
 - Generates combinatorial practice sequences
-- Detects chord input from physical Twiddler
+- Detects chord input from physical Twiddler or QWERTY keyboard
 - Tracks timing, WPM, and accuracy
 """
 
@@ -21,6 +21,7 @@ from kivy.graphics import Color, Rectangle, Line, RoundedRectangle
 from kivy.properties import ObjectProperty, StringProperty, NumericProperty, BooleanProperty
 from kivy.clock import Clock
 from kivy.core.text import Label as CoreLabel
+from kivy.core.window import Window
 from kivy.metrics import dp
 
 
@@ -44,6 +45,100 @@ BTN_BITS = {
     'T4': 12, 'F4L': 13, 'F4M': 14, 'F4R': 15,
     'F0L': 16, 'F0M': 17, 'F0R': 18,
     # T0 (bit 19) intentionally excluded - only used for mouse click
+}
+
+# QWERTY keyboard -> chord button mapping for practice without hardware
+# Layout mirrors the Twiddler grid onto a standard keyboard:
+#   Number row:  1=T1  2=T2  3=T3  4=T4  5=T0
+#   Left hand:   Q/W/E = F1   A/S/D = F2   Z/X/C = F3
+#   Right hand:  U/I/O = F4   J/K/L = F0
+QWERTY_TO_BTN = {
+    # Thumbs (number row)
+    49: 0,    # '1' -> T1 (bit 0)
+    50: 4,    # '2' -> T2 (bit 4)
+    51: 8,    # '3' -> T3 (bit 8)
+    52: 12,   # '4' -> T4 (bit 12)
+    53: 19,   # '5' -> T0 (bit 19)
+    # F1 row - index finger (left hand top)
+    113: 1,   # 'q' -> F1L (bit 1)
+    119: 2,   # 'w' -> F1M (bit 2)
+    101: 3,   # 'e' -> F1R (bit 3)
+    # F2 row - middle finger (left hand home)
+    97: 5,    # 'a' -> F2L (bit 5)
+    115: 6,   # 's' -> F2M (bit 6)
+    100: 7,   # 'd' -> F2R (bit 7)
+    # F3 row - ring finger (left hand bottom)
+    122: 9,   # 'z' -> F3L (bit 9)
+    120: 10,  # 'x' -> F3M (bit 10)
+    99: 11,   # 'c' -> F3R (bit 11)
+    # F4 row - pinky (right hand)
+    117: 13,  # 'u' -> F4L (bit 13)
+    105: 14,  # 'i' -> F4M (bit 14)
+    111: 15,  # 'o' -> F4R (bit 15)
+    # F0 row (right hand home)
+    106: 16,  # 'j' -> F0L (bit 16)
+    107: 17,  # 'k' -> F0M (bit 17)
+    108: 18,  # 'l' -> F0R (bit 18)
+}
+
+# Numpad -> chord button mapping (physical grid matches Twiddler layout)
+# Requires NumLock ON. Both QWERTY and numpad mappings are active simultaneously.
+#   Operator row:  / = T1   * = T2   - = T3   + = T4
+#   Numpad grid:   7/8/9 = F1   4/5/6 = F2   1/2/3 = F3   0/./Enter = F4
+NUMPAD_TO_BTN = {
+    # Thumbs (operator row)
+    267: 0,   # numpad / -> T1 (bit 0)
+    268: 4,   # numpad * -> T2 (bit 4)
+    269: 8,   # numpad - -> T3 (bit 8)
+    270: 12,  # numpad + -> T4 (bit 12)
+    300: 19,  # numlock  -> T0 (bit 19)
+    # F1 row (top numpad row)
+    263: 1,   # numpad 7 -> F1L (bit 1)
+    264: 2,   # numpad 8 -> F1M (bit 2)
+    265: 3,   # numpad 9 -> F1R (bit 3)
+    # F2 row (middle numpad row)
+    260: 5,   # numpad 4 -> F2L (bit 5)
+    261: 6,   # numpad 5 -> F2M (bit 6)
+    262: 7,   # numpad 6 -> F2R (bit 7)
+    # F3 row (lower numpad row)
+    257: 9,   # numpad 1 -> F3L (bit 9)
+    258: 10,  # numpad 2 -> F3M (bit 10)
+    259: 11,  # numpad 3 -> F3R (bit 11)
+    # F4 row (bottom numpad row)
+    256: 13,  # numpad 0 -> F4L (bit 13)
+    266: 14,  # numpad . -> F4M (bit 14)
+    271: 15,  # numpad enter -> F4R (bit 15)
+}
+
+# Combined mapping: both QWERTY and numpad active
+KB_TO_BTN = {**QWERTY_TO_BTN, **NUMPAD_TO_BTN}
+
+# Reverse map for display: bit -> key label
+BTN_TO_KEY_LABEL = {v: k for k, v in {
+    'T1': 0, 'T2': 4, 'T3': 8, 'T4': 12, 'T0': 19,
+    'F1L': 1, 'F1M': 2, 'F1R': 3,
+    'F2L': 5, 'F2M': 6, 'F2R': 7,
+    'F3L': 9, 'F3M': 10, 'F3R': 11,
+    'F4L': 13, 'F4M': 14, 'F4R': 15,
+    'F0L': 16, 'F0M': 17, 'F0R': 18,
+}.items()}
+
+QWERTY_KEY_LABELS = {
+    0: '1', 4: '2', 8: '3', 12: '4', 19: '5',
+    1: 'Q', 2: 'W', 3: 'E',
+    5: 'A', 6: 'S', 7: 'D',
+    9: 'Z', 10: 'X', 11: 'C',
+    13: 'U', 14: 'I', 15: 'O',
+    16: 'J', 17: 'K', 18: 'L',
+}
+
+NUMPAD_KEY_LABELS = {
+    0: '/', 4: '*', 8: '-', 12: '+', 19: 'NmLk',
+    1: 'Nm7', 2: 'Nm8', 3: 'Nm9',
+    5: 'Nm4', 6: 'Nm5', 7: 'Nm6',
+    9: 'Nm1', 10: 'Nm2', 11: 'Nm3',
+    13: 'Nm0', 14: 'Nm.', 15: 'NmEnt',
+    16: 'J', 17: 'K', 18: 'L',  # F0 only on QWERTY
 }
 
 # Layout for chord hint widget (excluding T0)
@@ -465,6 +560,8 @@ class ExerciseView(BoxLayout):
         self._fixed_row = None  # Which row is fixed (e.g., 'F1')
         self._fixed_col = None  # Which column of fixed row (e.g., 'L', 'M', 'R')
         self._varying_row = None  # Which row varies
+        self._kb_mode = False  # QWERTY keyboard chord input mode
+        self._kb_buttons = 0   # Current keyboard-simulated button bitmask
 
         # Toolbar
         toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(44), spacing=dp(8))
@@ -494,9 +591,14 @@ class ExerciseView(BoxLayout):
         self.hint_toggle = ToggleButton(text='Hints', size_hint_x=0.12)
         self.hint_toggle.bind(state=self._on_hint_toggle)
 
+        # QWERTY keyboard input toggle
+        self.kb_toggle = ToggleButton(text='QWERTY', size_hint_x=0.15)
+        self.kb_toggle.bind(state=self._on_kb_toggle)
+
         toolbar.add_widget(self.group_spinner)
         toolbar.add_widget(self.chars_spinner)
         toolbar.add_widget(self.hint_toggle)
+        toolbar.add_widget(self.kb_toggle)
         self.add_widget(toolbar)
 
         # Status label
@@ -800,6 +902,9 @@ class ExerciseView(BoxLayout):
             self._hint_popup.dismiss()
             self._hint_popup = None
 
+        # Reset keyboard chord state
+        self._kb_buttons = 0
+
     def _on_hint_toggle(self, instance, state):
         """Toggle always-show-hint mode"""
         self._always_show_hint = (state == 'down')
@@ -812,6 +917,40 @@ class ExerciseView(BoxLayout):
             # Hide hint when turning off
             self._hint_popup.dismiss()
             self._hint_popup = None
+
+    def _on_kb_toggle(self, instance, state):
+        """Toggle QWERTY keyboard chord input mode"""
+        self._kb_mode = (state == 'down')
+        self._kb_buttons = 0
+
+        if self._kb_mode:
+            Window.bind(on_key_down=self._on_kb_key_down)
+            Window.bind(on_key_up=self._on_kb_key_up)
+            self.status_label.text = (
+                'Keyboard: QWE/ASD/ZXC=F1-F3  UIO=F4 | Numpad: 789/456/123=F1-F3  0.Enter=F4'
+            )
+        else:
+            Window.unbind(on_key_down=self._on_kb_key_down)
+            Window.unbind(on_key_up=self._on_kb_key_up)
+            if self._target_text:
+                chars_str = ''.join(self._current_chars)
+                self.status_label.text = f"Practicing: {chars_str}"
+
+    def _on_kb_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle QWERTY key press -> update chord button bitmask"""
+        if key in KB_TO_BTN:
+            bit = KB_TO_BTN[key]
+            self._kb_buttons |= (1 << bit)
+            self.on_chord_event(self._kb_buttons)
+            return True  # Consume the event
+
+    def _on_kb_key_up(self, window, key, scancode):
+        """Handle QWERTY/numpad key release -> update chord button bitmask"""
+        if key in KB_TO_BTN:
+            bit = KB_TO_BTN[key]
+            self._kb_buttons &= ~(1 << bit)
+            self.on_chord_event(self._kb_buttons)
+            return True  # Consume the event
 
     def _update_timer(self, dt):
         """Update timer and stats"""
@@ -950,6 +1089,32 @@ class ExerciseView(BoxLayout):
         # Chord button diagram (shows expected in green, wrong presses in red)
         chord_widget = ChordHintWidget(chord_mask=chord_mask, pressed_mask=pressed_mask, size_hint_y=0.65)
         content.add_widget(chord_widget)
+
+        # Show key labels when in keyboard mode
+        if self._kb_mode and chord_mask:
+            qwerty_keys = []
+            numpad_keys = []
+            for bit in range(20):
+                if chord_mask & (1 << bit):
+                    qk = QWERTY_KEY_LABELS.get(bit)
+                    nk = NUMPAD_KEY_LABELS.get(bit)
+                    if qk:
+                        qwerty_keys.append(qk)
+                    if nk:
+                        numpad_keys.append(nk)
+            hint_parts = []
+            if qwerty_keys:
+                hint_parts.append(' + '.join(qwerty_keys))
+            if numpad_keys:
+                hint_parts.append(' + '.join(numpad_keys))
+            if hint_parts:
+                keys_label = Label(
+                    text='  or  '.join(hint_parts),
+                    font_size='14sp',
+                    color=(0.9, 0.9, 0.5, 1),
+                    size_hint_y=0.1
+                )
+                content.add_widget(keys_label)
 
         # Dismiss hint
         hint_label = Label(

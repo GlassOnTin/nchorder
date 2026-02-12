@@ -508,6 +508,10 @@ class MainLayout(BoxLayout):
                 # Show touch visualizer (hide overlay)
                 self._show_touch_visualizer()
 
+                # Disable keyboard chord mode (real device connected)
+                if self.exercise._kb_mode:
+                    self.exercise.kb_toggle.state = 'normal'
+
                 # Load device config
                 self.config_panel.device = self.device
                 self.config_panel._on_save_callback = self._save_with_stream_restart
@@ -527,7 +531,11 @@ class MainLayout(BoxLayout):
                     'Waiting for USB permission...\nTap "Allow" in the dialog.'
                 )
         else:
-            # No devices found - show debug info
+            # No devices found - enable keyboard chord mode for standalone use
+            if not self.exercise._kb_mode:
+                self.exercise.kb_toggle.state = 'down'
+
+            # Show debug info
             usb_status = NChorderDevice.get_usb_status()
             if _ANDROID:
                 self.connection_overlay.status_label.text = (
