@@ -338,14 +338,14 @@ Trill Square can function as:
 - [x] XIAO to PCA9548 (VIN, GND, SDA, SCL, RST)
 - [x] Trill Square on mux channel 0
 
-**Not yet tested:**
-- [ ] XIAO I2C communication with PCA9548
-- [ ] PCA9548 channel selection protocol
-- [ ] Trill Square responding through mux ch0
-- [ ] Trill Bars on mux channels 1-3
-- [ ] Power consumption within XIAO 3V3 rail capacity
-- [ ] I2C pull-up requirements (internal vs external)
-- [ ] Battery charging and runtime
+**Tested and working:**
+- [x] XIAO I2C communication with PCA9548
+- [x] PCA9548 channel selection protocol
+- [x] Trill Square responding through mux ch0
+- [x] Trill Bars on mux channels 1-3
+- [x] Power consumption within XIAO 3V3 rail capacity
+- [x] I2C pull-up requirements (internal vs external)
+- [x] Battery charging and runtime
 
 ## References
 
