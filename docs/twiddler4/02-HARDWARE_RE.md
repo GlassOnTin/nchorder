@@ -103,7 +103,7 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 - PNP: Base-emitter and base-collector both show ~0.6V drop (base positive)
 - NPN: Same, but base is the negative lead
 
-**The Q1/Q2 Circuit**: Q1 (PNP) and Q2 (NPN) form a complementary pair, likely acting as a power switch. Q2's output connects to Q1's base, allowing a logic-level GPIO to control a higher-current load.
+**The Q1/Q2 Circuit**: Q1 (PNP) and Q2 (NPN) form a Darlington pair that controls power to the addressable RGB LEDs on the thumb board. Q2's output connects to Q1's base, allowing a logic-level GPIO to switch the LED supply current.
 
 ### Step 4: Connectors
 
@@ -293,14 +293,14 @@ With power applied, use multimeter voltage mode:
 | GPIOTE | 0x40006000 | Button interrupts |
 | SAADC | 0x40007000 | Battery monitoring |
 
-**Note**: Thumb sensor and LED protocols not yet determined.
+**Thumb sensor**: PixArt PAW-A350 optical sensor at I2C address 0x33, with SHUTDOWN pin (active low) on P1.11.
+**Addressable LEDs**: Controlled via data pin routed through FFC J6 to thumb board; power switched by Q1/Q2 Darlington pair.
 
 ## What Remains Unverified
 
 - R1-R5 resistor functions
-- Q1/Q2 circuit exact purpose (power switch vs level shifter)
 - D1 (main board LED) pin assignment
-- L1-L3 RGB LED data pin - routed through FFC J6 to thumb board
+- L1-L3 RGB LED data pin assignment (routed through FFC J6 to thumb board)
 
 ## Key Lessons
 
