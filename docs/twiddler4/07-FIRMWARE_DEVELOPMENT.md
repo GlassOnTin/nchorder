@@ -170,33 +170,56 @@ The DK has two USB ports:
 | Buttons | `nchorder_buttons.c` | GPIO polling via NRF_P0->IN register |
 | Chords | `nchorder_chords.c` | Chord detection state machine |
 | USB | `nchorder_usb.c` | USB HID keyboard |
-| Storage | `nchorder_storage.c` | Flash storage for configs |
+| CDC | `nchorder_cdc.c` | USB CDC debug console |
+| Flash | `nchorder_flash.c` | FDS flash storage for configs |
 | LED | `nchorder_led.c` | WS2812 RGB LED via I2S |
+| Battery | `nchorder_battery.c` | SAADC battery monitoring |
+| Optical | `nchorder_optical.c` | PAW-A350 thumb sensor (I2C) |
+| Mouse | `nchorder_mouse.c` | USB HID mouse integration |
 
 ### Initialization Flow
 
 ```c
 main()
+├── QSPI disable              // Release P0.22/P0.23 for GPIO
+├── SWO trace disable          // Release P1.00 for F0L button
 ├── log_init()
+├── scheduler_init()           // Must be before timers_init
 ├── timers_init()
-├── buttons_leds_init()      // BSP (board buttons/LEDs)
-├── ble_stack_init()         // SoftDevice
+├── wdt_init()                 // Watchdog (5s timeout)
+├── buttons_leds_init()        // BSP (board buttons/LEDs)
+├── power_management_init()
+├── ble_stack_init()           // SoftDevice
 ├── gap_params_init()
+├── gatt_init()
 ├── advertising_init()
-├── services_init()          // BLE HIDS, BAS, DIS
-├── nchorder_storage_init()  // FDS flash storage
-├── nchorder_init()          // Chord system
-│   ├── chord_init()         // Load default mappings
-│   ├── nchorder_storage_load()  // Load config from flash
-│   ├── chord_load_config()  // Parse .cfg format
-│   ├── buttons_init()       // Configure GPIO
-│   └── nchorder_usb_init()  // USB HID
-├── nchorder_led_init()      // RGB LEDs
-├── advertising_start()
+├── services_init()            // BLE HIDS, BAS, DIS
+├── battery_init()             // SAADC battery monitoring
+├── conn_params_init()
+├── buffer_init()
+├── peer_manager_init()
+├── nchorder_flash_init()      // FDS flash storage
+├── nchorder_led_init()        // RGB LED driver (I2S/WS2812)
+├── LED test (R/G/B, 500ms)
+├── nchorder_init()            // Chord system
+│   ├── chord_init()           // Load default mappings
+│   ├── nchorder_flash_load_config()  // Load config from flash
+│   ├── chord_load_config()    // Parse .cfg format
+│   ├── buttons_init()         // Configure GPIO (or Trill sensors on XIAO)
+│   ├── buttons_set_callback()
+│   ├── nchorder_usb_init()    // USB HID (Twiddler4/XIAO only)
+│   └── nchorder_usb_start()
+├── timers_start()
+├── advertising_start(false)   // Keep bonds across resets
 └── main loop
+    ├── wdt_feed()
+    ├── nchorder_usb_process()
+    ├── nchorder_usb_check_disconnect()
+    ├── nchorder_cdc_process()
     └── idle_state_handle()
         ├── app_sched_execute()
         ├── nchorder_usb_process()
+        ├── NRF_LOG_PROCESS()
         └── nrf_pwr_mgmt_run()
 ```
 
@@ -237,14 +260,19 @@ Key structures:
 - [x] USB HID keyboard (secondary)
 - [x] Flash storage for configs (FDS)
 - [x] RGB LED driver (I2S/WS2812)
+- [x] PAW-A350 optical sensor driver (I2C at 0x33, disabled pending I2C bus sharing fix)
+- [x] USB HID mouse integration
+- [x] USB CDC debug console
+- [x] SAADC battery monitoring
+- [x] Watchdog timer (5s)
+- [x] BLE bond/peer management
 
 ## Not Yet Implemented
 
-- [ ] Thumb sensor driver (protocol unknown)
 - [ ] System chords (config switching, sleep)
 - [ ] USB mass storage (config editing)
 - [ ] Mouse button chords (partial)
-- [ ] LED driver update (traced to P1.13)
+- [ ] Optical sensor enabled in production build (I2C bus contention with main loop)
 
 ## Legal Notes
 
