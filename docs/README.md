@@ -50,7 +50,6 @@ Documentation:
 - [I2C bus analysis](twiddler4/04-I2C_ANALYSIS.md)
 - [Config file format](twiddler4/06-CONFIG_FORMAT.md)
 - [Firmware development](twiddler4/07-FIRMWARE_DEVELOPMENT.md)
-- [APPROTECT bypass](twiddler4/08-APPROTECT_BYPASS.md)
 
 ## Quick Start
 

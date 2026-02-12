@@ -24,7 +24,6 @@ Hardware documentation for the Twiddler 4 chording keyboard, useful for custom f
 | Optical sensor | [05-OPTICAL_SENSOR.md](05-OPTICAL_SENSOR.md) | PixArt PAW-A350 thumb sensor |
 | Config format | [06-CONFIG_FORMAT.md](06-CONFIG_FORMAT.md) | Binary configuration file structure |
 | Firmware dev | [07-FIRMWARE_DEVELOPMENT.md](07-FIRMWARE_DEVELOPMENT.md) | Building, flashing, debugging custom firmware |
-| APPROTECT bypass | [08-APPROTECT_BYPASS.md](08-APPROTECT_BYPASS.md) | Voltage glitching to extract original firmware |
 
 ## Hardware Summary
 
@@ -74,7 +73,6 @@ Key reference photos:
 3. **Building custom firmware?** See [07-FIRMWARE_DEVELOPMENT.md](07-FIRMWARE_DEVELOPMENT.md)
 4. **GPIO mapping?** See [03-GPIO_DISCOVERY.md](03-GPIO_DISCOVERY.md)
 5. **Working with configs?** Format spec in [06-CONFIG_FORMAT.md](06-CONFIG_FORMAT.md)
-6. **Extracting original firmware?** See [08-APPROTECT_BYPASS.md](08-APPROTECT_BYPASS.md)
 
 ---
 
