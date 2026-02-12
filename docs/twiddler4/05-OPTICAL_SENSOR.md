@@ -202,6 +202,10 @@ Motion data is automatically sent to USB HID mouse when detected.
 
 Disassembly of the PAW-A350 module showing (left to right): lens assembly, sensor die with bond wires visible, and complete module with FPC attached.
 
+![PAW-A350 sensor, lens, and housing separated](../../photos/twiddler4/37_paw_a350_sensor_lens_housing.jpg)
+
+The three components separated: sensor package with bond wires and IC pins (left), ADBL-A321 lens assembly (center), and plastic housing with IR filter window (right).
+
 ## References
 
 - [PixArt PAW-A350 Product Page](https://www.codico.com/en/en/current/news/paw-a350-optical-finger-navigation-chip-by-pixart)
