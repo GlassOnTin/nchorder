@@ -130,73 +130,21 @@ Summary: 6x GND, 3x VCC, 1x SDA, 1x SCL, 1x SHUTDOWN, 1x T0 button, 4x NC.
 
 **Pull-up resistors**: SDA and SCL have ~600Ω pull-ups to 3.3V on the sensor module PCB.
 
-## Interface Options
+## Interface
 
-### ADBS-A350 Datasheet Findings
+The sensor uses **standard I2C** at address **0x33**, communicating via the nRF52840 TWI1 hardware peripheral at 100kHz. The thumb board has on-board circuitry tying CS, MOSI, IO_SEL, and NRST to fixed levels, so only SDA, SCL, and SHUTDOWN are routed to the main board.
 
-From [mbed ADBM-A350 guide](https://os.mbed.com/teams/PixArt/code/ADBM-A350_referenceCode/wiki/Guide-for-nRF52-DK-Platform):
+After deasserting SHUTDOWN (drive LOW to enable), wait at least 50ms (`tWAKEUP`) before I2C access.
 
-**Power requirements**:
-- VDD (core): 1.7-2.1V (typical 1.8V) - **NOT 3.3V!**
-- VDDIO (I/O): 1.65-3.6V (selectable 1.8V or 2.8V nominal) - 3.3V is within spec
+**Power requirements** (from [mbed ADBM-A350 guide](https://os.mbed.com/teams/PixArt/code/ADBM-A350_referenceCode/wiki/Guide-for-nRF52-DK-Platform)):
+- VDD (core): 1.7-2.1V (typical 1.8V)
+- VDDIO (I/O): 1.65-3.6V — 3.3V is within spec
 
-**Control pins required for I2C mode** (on eval board):
-- **SHUTDOWN** (p20): GPIO to enable/disable sensor
-- **IO_SEL** (p19): GPIO to select I2C vs SPI mode
-- **CS** (p22): Tied HIGH for I2C address 0x57
-- **MOSI** (p23): Tied HIGH for I2C address 0x57
-- **MISO/SDA** (p26): Bidirectional data line
-- **NRST**: Tied to 1.8V (not in reset)
+### Investigation Notes
 
-**Critical**: After deasserting SHUTDOWN, wait `tWAKEUP` before accessing the serial port.
+The mbed reference documents address 0x57 (with CS and MOSI tied HIGH) and the eval board uses 5+ GPIO pins. The actual Twiddler 4 hardware uses address 0x33 — discovered via I2C bus scan after the correct pins (P0.30/P0.31, not P0.29/P1.11) were identified.
 
-### Interface Problem
-
-The ADBS-A350 evaluation board uses **5+ GPIO pins** for I2C mode, but the Twiddler 4 only routes **2 pins** (P0.29 and P1.11) to the sensor. This suggests either:
-1. The thumb board has on-board circuitry tying CS, MOSI, SHUTDOWN, IO_SEL to fixed levels
-2. The sensor uses a different protocol (see 2-wire below)
-
-### Standard I2C Mode
-
-**I2C address**: `0x57` (with CS and MOSI tied HIGH)
-
-**Current status**: I2C bus scan found **zero devices**. Tested:
-- nRF52840 TWI1 peripheral at 100kHz
-- Scanned addresses 0x08-0x78
-- Both pin configurations (P0.29/P1.11 as SDA/SCL and swapped)
-
-### 4-Wire SPI Mode
-
-**SPI probe result**: No response (0xFF on all reads)
-
-Tested:
-- SPI Mode 0 (CPOL=0, CPHA=0)
-- SPI Mode 3 (CPOL=1, CPHA=1)
-- P0.29 HIGH and LOW as CS
-
-### PAW3204-Style 2-Wire Protocol
-
-Some PixArt sensors (PAW3204, etc.) use a proprietary 2-wire protocol that is **NOT I2C**:
-
-| Aspect | PAW3204 2-Wire | Standard I2C |
-|--------|----------------|--------------|
-| Wires | SCLK + SDIO (bidirectional) | SCL + SDA (bidirectional) |
-| Addressing | MSB=0 read, MSB=1 write | 7-bit address + R/W bit |
-| Timing | Changes on falling SCLK, sample on rising | Changes after SCL LOW, sample on rising |
-| Protocol | Simple register access | Full I2C with ACK/NAK |
-
-**2-wire protocol details** (from [PAW3204 datasheet](https://www.alldatasheet.com/datasheet-pdf/pdf/333267/PIXART/PAW3204.html)):
-- First byte: 7-bit address + direction bit (MSB=0 for read)
-- After address, controller releases SDIO for sensor to drive data
-- Minimum 3µs hold time between operations
-- Resync: Toggle SCLK low ≥1µs, then high
-
-**2-wire probe result**: No response (0xFF on all reads)
-
-Tested:
-- Both pin configurations
-- Clock idle HIGH and LOW
-- Various timing (1µs, 5µs, 10µs delays)
+SPI and PAW3204-style 2-wire protocols were also tested during investigation and produced no response — the sensor only responds to standard I2C.
 
 ## Register Map (Typical for PixArt OFN)
 
