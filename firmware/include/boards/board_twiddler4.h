@@ -29,8 +29,8 @@
 
 // Thumb buttons
 #define PIN_BTN_T0      NRF_GPIO_PIN_MAP(0, 29)  // P0.29 - empirically verified
-#define PIN_BTN_T1      NRF_GPIO_PIN_MAP(0, 0)   // P0.00 (E73 pin 11)
-#define PIN_BTN_T2      NRF_GPIO_PIN_MAP(0, 4)   // P0.04 (E73 pin 18)
+#define PIN_BTN_T1      NRF_GPIO_PIN_MAP(0, 4)   // P0.04 (E73 pin 18)
+#define PIN_BTN_T2      NRF_GPIO_PIN_MAP(0, 0)   // P0.00 (E73 pin 11)
 #define PIN_BTN_T3      NRF_GPIO_PIN_MAP(0, 8)   // P0.08 (E73 pin 16)
 #define PIN_BTN_T4      NRF_GPIO_PIN_MAP(0, 13)  // P0.13 (E73 pin 33)
 

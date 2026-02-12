@@ -120,8 +120,8 @@ SWD (Serial Wire Debug) is ARM's 2-wire debug protocol. With a J-Link or ST-Link
 |--------|---------|----------|--------|
 | 1 | 33 | P0.13 | T4 (SP) |
 | 2 | 16 | P0.08 | T3 (E) |
-| 3 | 18 | P0.04 | T2 (A) |
-| 4 | 11 | P0.00 | T1 (N) |
+| 3 | 18 | P0.04 | T1 (N) |
+| 4 | 11 | P0.00 | T2 (A) |
 | 5 | 1 | P1.11 | Sensor SHUTDOWN (active LOW) |
 | 6 | 8 | P0.29 | T0 (thumb button) |
 | 7 | 10 | P0.30 | I2C SCL (optical sensor) |
@@ -172,14 +172,14 @@ The E73 module uses non-standard pin naming (AI0-AI7, XL1/XL2, etc.) that must b
 | 8 | AI5 | A10 | P0.29 | Thumb sensor T0C |
 | 9 | AI7 | A8 | P0.31 | Thumb sensor T0B |
 | 10 | AI6 | B9 | P0.30 | Thumb sensor T0A |
-| 11 | XL1 | D2 | P0.00 | Button T1 (Thumb 1) |
+| 11 | XL1 | D2 | P0.00 | Button T2 (Thumb 2) |
 | 12 | P0.26 | G1 | P0.26 | Button F0R |
 | 13 | XL2 | F2 | P0.01 | Button F1R |
 | 14 | P0.06 | L1 | P0.06 | Button F2M |
 | 15 | AI3 | K2 | P0.05 | Button F2R |
 | 16 | P0.08 | N1 | P0.08 | Button T3 (Thumb 3) |
 | 17 | P1.09 | R1 | P1.09 | Header J3 pin 6 |
-| 18 | AI2 | J1 | P0.04 | Button T2 (Thumb 2) |
+| 18 | AI2 | J1 | P0.04 | Button T1 (Thumb 1) |
 | 19 | VCC | - | VDD | 3.3V power |
 | 20 | P0.12 | U1 | P0.12 | Button F3L |
 | 21 | GND | - | GND | Ground |
@@ -212,8 +212,8 @@ The E73 module uses non-standard pin naming (AI0-AI7, XL1/XL2, etc.) that must b
 
 | Button | E73 Pin | nRF52840 | Notes |
 |--------|---------|----------|-------|
-| T1 | 11 | P0.00 | XL1 (32kHz crystal pin) |
-| T2 | 18 | P0.04 | AI2 (analog input) |
+| T1 | 18 | P0.04 | AI2 (analog input) |
+| T2 | 11 | P0.00 | XL1 (32kHz crystal pin) |
 | T3 | 16 | P0.08 | - |
 | T4 | 33 | P0.13 | - |
 
@@ -249,7 +249,7 @@ The E73 module uses non-standard pin naming (AI0-AI7, XL1/XL2, etc.) that must b
 
 1. **NFC Pins**: P0.09 (F3R) and P0.10 (F3M) are NFC antenna pins by default. To use as GPIO, write `0xFFFFFFFE` to UICR.NFCPINS (address 0x1000120C) and reset.
 
-2. **Crystal Pins**: P0.00 (T1) and P0.01 (F1R) are 32.768 kHz crystal pins (XL1/XL2). Can be used as GPIO when external crystal is not populated.
+2. **Crystal Pins**: P0.00 (T2) and P0.01 (F1R) are 32.768 kHz crystal pins (XL1/XL2). Can be used as GPIO when external crystal is not populated.
 
 3. **Analog Inputs**: Several button pins (P0.02, P0.04, P0.05, P0.29-P0.31) are analog-capable, which may be intentional for future features or simply convenient routing.
 

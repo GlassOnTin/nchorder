@@ -89,7 +89,7 @@ Some pins are under the module and cannot be probed without desoldering.
 
 | Button | GPIO | E73 Pin |
 |--------|------|---------|
-| T1 (N) | P0.00 | 11 |
+| T1 (N) | P0.04 | 18 |
 | F1R | P0.01 | 13 |
 | F1M | P0.02 | 7 |
 | F1L | P0.03 | 3 |
@@ -212,8 +212,8 @@ This was confirmed by:
 |--------|---------|------|--------|-------|
 | **Thumb Buttons** |
 | T0 | 8 | P0.29 | ✅ Verified | Extra thumb button (labeled as sensor in original) |
-| T1 (N) | 11 | P0.00 | ✅ Verified | Num modifier |
-| T2 (A) | 18 | P0.04 | ✅ Verified | Alt modifier |
+| T1 (N) | 18 | P0.04 | ✅ Verified | Num modifier |
+| T2 (A) | 11 | P0.00 | ✅ Verified | Alt modifier |
 | T3 (E) | 16 | P0.08 | ✅ Verified | Ctrl/Enter modifier |
 | T4 (SP) | 33 | P0.13 | ✅ Verified | Shift/Space modifier |
 | **Finger Row 0 (Mouse)** |
@@ -251,7 +251,7 @@ These are active-low with internal pull-ups, matching the standard button config
 ### GPIO Summary by Port
 
 **Port 0 (21 GPIOs)**:
-- Thumb: P0.00 (T1), P0.04 (T2), P0.08 (T3), P0.13 (T4), P0.29 (T0)
+- Thumb: P0.04 (T1), P0.00 (T2), P0.08 (T3), P0.13 (T4), P0.29 (T0)
 - F0 row: P0.22 (F0L), P0.24 (F0M), P0.26 (F0R)
 - F1 row: P0.01, P0.02, P0.03
 - F2 row: P0.05, P0.06, P0.07

@@ -250,6 +250,37 @@ uint32_t buttons_init(void)
         NRF_LOG_DEBUG("Buttons: Pin %d (%s) configured", pin, m_button_names[i]);
     }
 
+    // GPIO scan: enable pull-ups on all unassigned P0 pins so we can
+    // observe which ones the thumb buttons actually connect to.
+    // Skip: P0.30/P0.31 (I2C), and pins already configured above.
+    {
+        // Build bitmask of pins already configured as button inputs
+        uint32_t p0_configured = 0;
+        for (int i = 0; i < NCHORDER_TOTAL_BUTTONS; i++) {
+            uint8_t pin = m_button_pins[i];
+            if (pin < 32) p0_configured |= (1UL << pin);
+        }
+        // Exclude only pins already configured as button inputs
+        // (P0.30/P0.31 included in scan - optical TWI is disabled)
+        uint32_t p0_exclude = p0_configured;
+        for (uint8_t p = 0; p < 32; p++) {
+            if (!(p0_exclude & (1UL << p))) {
+                nrf_gpio_cfg_input(p, NRF_GPIO_PIN_PULLUP);
+            }
+        }
+        NRF_LOG_INFO("Buttons: GPIO scan pull-ups enabled on P0 (exclude mask=0x%08X)", p0_exclude);
+
+        // Also pull up all P1 pins except LED power (P1.10) and LED data (P1.13)
+        uint32_t p1_exclude = (1UL << 10) | (1UL << 13);
+        // Include P1.09 (EXT2) which is already configured above
+        for (uint8_t p = 0; p < 16; p++) {
+            if (!(p1_exclude & (1UL << p))) {
+                nrf_gpio_cfg_input(NRF_GPIO_PIN_MAP(1, p), NRF_GPIO_PIN_PULLUP);
+            }
+        }
+        NRF_LOG_INFO("Buttons: GPIO scan pull-ups enabled on P1 (exclude mask=0x%04X)", p1_exclude);
+    }
+
     // Brief delay for pins to settle
     for (volatile int j = 0; j < 10000; j++);
 

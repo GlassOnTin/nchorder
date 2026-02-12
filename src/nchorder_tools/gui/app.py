@@ -615,9 +615,15 @@ class MainLayout(BoxLayout):
         """Handle incoming touch frame (called from background thread)"""
         if not hasattr(self, '_frame_debug_count'):
             self._frame_debug_count = 0
+            self._last_buttons = 0
         self._frame_debug_count += 1
-        if self._frame_debug_count <= 3 or (frame.buttons and self._frame_debug_count % 100 == 0):
-            print(f"[FRAME] #{self._frame_debug_count} buttons=0x{frame.buttons:04x}", flush=True)
+        if self._frame_debug_count <= 3 or frame.buttons != self._last_buttons:
+            diag = frame.get_gpio_diagnostics() if frame.is_gpio_driver() else {}
+            if diag:
+                print(f"[FRAME] #{self._frame_debug_count} buttons=0x{frame.buttons:04x} P0=0x{diag['raw_p0']:08x} P1=0x{diag['raw_p1']:08x}", flush=True)
+            else:
+                print(f"[FRAME] #{self._frame_debug_count} buttons=0x{frame.buttons:04x}", flush=True)
+        self._last_buttons = frame.buttons
         self.touch_vis.update(frame)
         # Route chord events to exercise view only when Learn tab is active
         if self.tabs.current_tab == self._exercise_tab:
