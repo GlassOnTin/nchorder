@@ -2,6 +2,10 @@
 
 Open-source firmware and tools for nRF52840-based chorded keyboards.
 
+A chorded keyboard lets you type by pressing combinations of buttons simultaneously, like playing piano chords. Instead of one key per letter, a handful of buttons in different combinations can produce the full alphabet, numbers, and symbols -- all one-handed. The concept dates back to Doug Engelbart's work in the 1960s.
+
+**You can try it right now** -- the GUI app below runs on any platform, no hardware needed.
+
 ## Quick Start - GUI App
 
 Pre-built apps are available for all platforms:
@@ -15,10 +19,11 @@ Pre-built apps are available for all platforms:
 
 ### What You Can Do
 
-The GUI works standalone (no keyboard required) for:
+The GUI works standalone (no hardware required) for:
 
 - **Cheat Sheet** - Visual reference for all chords in your layout, organized by category
 - **Exercise Mode** - Practice chords with scrolling prompts and real-time feedback
+  - **QWERTY mode** - Try chord typing on your regular keyboard (maps QWE/ASD/ZXC to finger rows, 1-4 to thumb buttons)
 - **Chord Editor** - Browse and modify chord mappings
 
 With a keyboard connected via USB:
