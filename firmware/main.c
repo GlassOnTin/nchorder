@@ -369,12 +369,24 @@ APP_TIMER_DEF(m_battery_timer_id);                                  /**< Battery
 APP_TIMER_DEF(m_key_sequence_timer_id);                             /**< Timer for multi-char key sequence delays. */
 APP_TIMER_DEF(m_hid_test_timer_id);                                 /**< DEBUG: Timer to test HID send path. */
 APP_TIMER_DEF(m_debug_status_timer_id);                             /**< DEBUG: Periodic BLE status timer. */
+APP_TIMER_DEF(m_ble_release_timer_id);                              /**< Timer for deferred BLE key release. */
 
 /** Key sequence state for multi-character macros */
 static const multichar_key_t *m_key_sequence = NULL;                /**< Current key sequence being sent. */
 static uint16_t m_key_sequence_count = 0;                           /**< Total keys in sequence. */
 static uint16_t m_key_sequence_index = 0;                           /**< Current key index being sent. */
 static bool m_key_sequence_active = false;                          /**< True if sequence in progress. */
+
+/** Deferred BLE key release state */
+typedef enum {
+    BLE_RELEASE_NONE,
+    BLE_RELEASE_KEYBOARD,
+    BLE_RELEASE_CONSUMER
+} ble_release_type_t;
+
+static volatile ble_release_type_t m_pending_ble_release = BLE_RELEASE_NONE;
+
+#define BLE_RELEASE_DELAY_MS  5                                     /**< Delay before sending BLE key release (ms). */
 
 #define KEY_SEQUENCE_DELAY_MS   15                                  /**< Delay between keys in sequence (ms). */
 
@@ -783,6 +795,70 @@ static void debug_status_timeout_handler(void * p_context)
 }
 
 
+/**@brief Timer handler for deferred BLE key release.
+ *
+ * @details Sends the key-up report after a short delay so the SoftDevice
+ *          HVN TX queue has time to drain the press notification.
+ */
+static void ble_release_timeout_handler(void * p_context)
+{
+    UNUSED_PARAMETER(p_context);
+
+    ble_release_type_t release_type = m_pending_ble_release;
+    m_pending_ble_release = BLE_RELEASE_NONE;
+
+    if (release_type == BLE_RELEASE_NONE || m_conn_handle == BLE_CONN_HANDLE_INVALID) {
+        return;
+    }
+
+    ret_code_t err_code;
+
+    if (release_type == BLE_RELEASE_KEYBOARD) {
+        uint8_t data[INPUT_REPORT_KEYS_MAX_LEN];
+        memset(data, 0, sizeof(data));
+
+        if (!m_in_boot_mode) {
+            err_code = ble_hids_inp_rep_send(&m_hids,
+                                             INPUT_REPORT_KEYS_INDEX,
+                                             INPUT_REPORT_KEYS_MAX_LEN,
+                                             data,
+                                             m_conn_handle);
+        } else {
+            err_code = ble_hids_boot_kb_inp_rep_send(&m_hids,
+                                                      INPUT_REPORT_KEYS_MAX_LEN,
+                                                      data,
+                                                      m_conn_handle);
+        }
+
+        if (err_code != NRF_SUCCESS &&
+            err_code != NRF_ERROR_INVALID_STATE &&
+            err_code != NRF_ERROR_RESOURCES &&
+            err_code != NRF_ERROR_BUSY &&
+            err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING) {
+            NRF_LOG_WARNING("BLE deferred key release failed: %d", err_code);
+        }
+    } else if (release_type == BLE_RELEASE_CONSUMER) {
+        uint8_t data[INPUT_REPORT_CONSUMER_MAX_LEN];
+        data[0] = 0;
+        data[1] = 0;
+
+        err_code = ble_hids_inp_rep_send(&m_hids,
+                                         INPUT_REPORT_CONSUMER_INDEX,
+                                         INPUT_REPORT_CONSUMER_MAX_LEN,
+                                         data,
+                                         m_conn_handle);
+
+        if (err_code != NRF_SUCCESS &&
+            err_code != NRF_ERROR_INVALID_STATE &&
+            err_code != NRF_ERROR_RESOURCES &&
+            err_code != NRF_ERROR_BUSY &&
+            err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING) {
+            NRF_LOG_WARNING("BLE deferred consumer release failed: %d", err_code);
+        }
+    }
+}
+
+
 /**@brief Timer handler for sending keys in a multi-character sequence.
  *
  * @details Sends the next key in the sequence and schedules the next one if more remain.
@@ -898,6 +974,12 @@ static void timers_init(void)
     err_code = app_timer_create(&m_debug_status_timer_id,
                                 APP_TIMER_MODE_REPEATED,
                                 debug_status_timeout_handler);
+    APP_ERROR_CHECK(err_code);
+
+    // Create BLE key release timer (defers release to avoid TX queue overflow)
+    err_code = app_timer_create(&m_ble_release_timer_id,
+                                APP_TIMER_MODE_SINGLE_SHOT,
+                                ble_release_timeout_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -2308,32 +2390,16 @@ static void send_single_key(uint8_t modifiers, uint8_t keycode)
         NRF_LOG_WARNING("BLE key press failed: %d", err_code);
     }
 
-    // Send key release (all keys up)
-    memset(data, 0, sizeof(data));
-
-    if (!m_in_boot_mode)
-    {
-        err_code = ble_hids_inp_rep_send(&m_hids,
-                                         INPUT_REPORT_KEYS_INDEX,
-                                         INPUT_REPORT_KEYS_MAX_LEN,
-                                         data,
-                                         m_conn_handle);
-    }
-    else
-    {
-        err_code = ble_hids_boot_kb_inp_rep_send(&m_hids,
-                                                  INPUT_REPORT_KEYS_MAX_LEN,
-                                                  data,
-                                                  m_conn_handle);
-    }
-
-    if (err_code != NRF_SUCCESS &&
-        err_code != NRF_ERROR_INVALID_STATE &&
-        err_code != NRF_ERROR_RESOURCES &&
-        err_code != NRF_ERROR_BUSY &&
-        err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-    {
-        NRF_LOG_WARNING("BLE key release send failed: %d", err_code);
+    // Defer key release via timer so the SoftDevice HVN TX queue can drain
+    // the press notification first. Without this delay, the release report
+    // fails with NRF_ERROR_RESOURCES and the host never sees key-up.
+    m_pending_ble_release = BLE_RELEASE_KEYBOARD;
+    ret_code_t timer_err = app_timer_start(m_ble_release_timer_id,
+                                            APP_TIMER_TICKS(BLE_RELEASE_DELAY_MS),
+                                            NULL);
+    if (timer_err != NRF_SUCCESS) {
+        NRF_LOG_WARNING("BLE release timer start failed: %d", timer_err);
+        m_pending_ble_release = BLE_RELEASE_NONE;
     }
 }
 
@@ -2381,23 +2447,14 @@ static void send_consumer_report(uint16_t usage_code)
         NRF_LOG_WARNING("Consumer press send failed: %d", err_code);
     }
 
-    // Send consumer key release (usage 0)
-    data[0] = 0;
-    data[1] = 0;
-
-    err_code = ble_hids_inp_rep_send(&m_hids,
-                                     INPUT_REPORT_CONSUMER_INDEX,
-                                     INPUT_REPORT_CONSUMER_MAX_LEN,
-                                     data,
-                                     m_conn_handle);
-
-    if (err_code != NRF_SUCCESS &&
-        err_code != NRF_ERROR_INVALID_STATE &&
-        err_code != NRF_ERROR_RESOURCES &&
-        err_code != NRF_ERROR_BUSY &&
-        err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-    {
-        NRF_LOG_WARNING("Consumer release send failed: %d", err_code);
+    // Defer consumer key release via timer
+    m_pending_ble_release = BLE_RELEASE_CONSUMER;
+    ret_code_t timer_err = app_timer_start(m_ble_release_timer_id,
+                                            APP_TIMER_TICKS(BLE_RELEASE_DELAY_MS),
+                                            NULL);
+    if (timer_err != NRF_SUCCESS) {
+        NRF_LOG_WARNING("BLE consumer release timer failed: %d", timer_err);
+        m_pending_ble_release = BLE_RELEASE_NONE;
     }
 
     NRF_LOG_DEBUG("Consumer: sent 0x%04X", usage_code);
