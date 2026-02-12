@@ -322,11 +322,28 @@ class NChorderDevice:
             # Desktop: use pyserial
             if serial is None:
                 return []
-            devices = []
+            candidates = []
             for port in serial.tools.list_ports.comports():
                 if port.vid == cls.VID and port.pid == cls.PID:
-                    devices.append(port.device)
-            return devices
+                    candidates.append(port.device)
+            if len(candidates) <= 1:
+                return candidates
+            # Multiple ports with same VID/PID (can happen after reflash).
+            # Probe each with GET_VERSION to find the live one.
+            devices = []
+            for port_path in candidates:
+                try:
+                    s = serial.Serial(port_path, 115200, timeout=0.3,
+                                      write_timeout=0.3)
+                    s.reset_input_buffer()
+                    s.write(bytes([CDCCommand.GET_VERSION]))
+                    resp = s.read(3)
+                    s.close()
+                    if resp and len(resp) == 3:
+                        devices.append(port_path)
+                except Exception:
+                    pass
+            return devices if devices else candidates
 
     @classmethod
     def has_usb_permission(cls, device_name: str) -> bool:

@@ -585,6 +585,34 @@ DK J-Link Header          XIAO
 └─────────────┘  │
 ```
 
+### APPROTECT on Original Twiddler 4 Modules
+
+**Symptom:** J-Link detects the probe but cannot connect to the target nRF52840.
+`nrfjprog` reports error -102, JLinkExe shows "Cannot connect to target" and
+`JLINK_CORESIGHT_WriteAPDPReg` returns -1 for every register access.
+
+**Root Cause:** The EByte E73 module in an original Twiddler 4 has APPROTECT enabled
+(either factory default or set by the original firmware). APPROTECT blocks all SWD
+debug access until the device is recovered with a full chip erase.
+
+**Fix:** Use `nrfjprog --recover` to erase the chip and clear APPROTECT, then flash
+SoftDevice and application:
+
+```bash
+# Recover (erases everything including APPROTECT)
+nrfjprog --recover -f nrf52
+
+# Flash SoftDevice (required - recover erased it)
+nrfjprog --program <softdevice_s140.hex> --verify -f nrf52
+
+# Flash application
+nrfjprog --program _build/nrf52840_xxaa.hex --sectorerase --verify -f nrf52
+nrfjprog --reset -f nrf52
+```
+
+**Note:** This only needs to be done once. After recovery, normal SWD access works
+and subsequent flashes only need `--sectorerase` (which preserves the SoftDevice).
+
 ### SoftDevice Must Be Flashed
 
 **Symptom:** Device resets immediately after flashing, or BLE doesn't work.

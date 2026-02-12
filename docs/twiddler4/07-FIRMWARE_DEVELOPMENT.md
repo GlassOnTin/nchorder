@@ -167,7 +167,7 @@ The DK has two USB ports:
 | Module | File | Purpose |
 |--------|------|---------|
 | Config | `nchorder_config.h` | GPIO pins, timing constants |
-| Buttons | `nchorder_buttons.c` | GPIO input with GPIOTE interrupts |
+| Buttons | `nchorder_buttons.c` | GPIO polling via NRF_P0->IN register |
 | Chords | `nchorder_chords.c` | Chord detection state machine |
 | USB | `nchorder_usb.c` | USB HID keyboard |
 | Storage | `nchorder_storage.c` | Flash storage for configs |
@@ -203,16 +203,18 @@ main()
 ### Chord Processing Flow
 
 ```
-GPIO interrupt → debounce timer → button callback
-                                      ↓
-                              chord_update()
-                                      ↓
-                              chord completed?
-                                      ↓ yes
-                              chord_lookup_*()
-                                      ↓
-                              send via BLE or USB
+Timer tick → poll NRF_P0->IN → debounce filter → button state update
+                                                        ↓
+                                                chord_update()
+                                                        ↓
+                                                chord completed?
+                                                        ↓ yes
+                                                chord_lookup_*()
+                                                        ↓
+                                                send via BLE or USB
 ```
+
+**Note**: Button reading uses direct GPIO register polling, not GPIOTE interrupts. This was found to be more reliable for scanning multiple buttons simultaneously.
 
 ## Configuration File Format
 
@@ -238,19 +240,21 @@ Key structures:
 
 ## Not Yet Implemented
 
-- [ ] Optical sensor (I2C driver - chip unidentified)
+- [ ] Thumb sensor driver (protocol unknown)
 - [ ] System chords (config switching, sleep)
 - [ ] USB mass storage (config editing)
 - [ ] Mouse button chords (partial)
-- [ ] LED data pin verification (placeholder P0.26)
+- [ ] LED driver update (traced to P1.13)
 
 ## Legal Notes
 
 This firmware is a **clean-room implementation**:
 - Uses only public Nordic SDK and documentation
-- GPIO mappings determined via hardware probing (multimeter continuity)
+- GPIO mappings determined via hardware probing (multimeter continuity) **and empirical firmware testing**
 - Config format derived from community documentation
 - No proprietary code or reverse-engineered binaries included
+
+**Important**: The E73 module datasheet has incorrect GPIO mappings for pins 38/40/42. Empirical testing with bare-metal firmware was required to discover the correct assignments (P0.15/P0.20/P0.17 instead of P1.02/P1.04/P1.06). See [03-GPIO_DISCOVERY.md](03-GPIO_DISCOVERY.md) for details.
 
 ---
 

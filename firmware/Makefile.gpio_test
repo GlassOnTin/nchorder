@@ -1,0 +1,80 @@
+# Minimal GPIO Test Makefile - No SoftDevice
+# Build: make -f Makefile.gpio_test
+# Flash: make -f Makefile.gpio_test flash
+
+PROJECT_NAME := gpio_test
+TARGETS := nrf52840_xxaa
+OUTPUT_DIRECTORY := _build_gpio_test
+
+SDK_ROOT := ../sdk/nRF5_SDK_17.1.0_ddde560
+PROJ_DIR := .
+
+$(OUTPUT_DIRECTORY)/nrf52840_xxaa.out: \
+  LINKER_SCRIPT := pca10056/blank/armgcc/gpio_test.ld
+
+# Source files - truly minimal
+SRC_FILES += \
+  $(SDK_ROOT)/modules/nrfx/mdk/gcc_startup_nrf52840.S \
+  $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
+  $(PROJ_DIR)/gpio_test.c \
+  $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
+  $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c
+
+# Include paths
+INC_FOLDERS += \
+  $(PROJ_DIR)/pca10056/s140/config \
+  $(SDK_ROOT)/modules/nrfx/mdk \
+  $(SDK_ROOT)/modules/nrfx/hal \
+  $(SDK_ROOT)/modules/nrfx \
+  $(SDK_ROOT)/components/toolchain/cmsis/include \
+  $(SDK_ROOT)/components/libraries/util \
+  $(SDK_ROOT)/components/softdevice/s140/headers \
+  $(SDK_ROOT)/external/segger_rtt
+
+# Libraries
+LIB_FILES += \
+
+# Optimization
+OPT = -O3 -g3
+
+# C flags
+CFLAGS += $(OPT)
+CFLAGS += -DNRF52840_XXAA
+CFLAGS += -DBOARD_PCA10056
+CFLAGS += -mcpu=cortex-m4
+CFLAGS += -mthumb -mabi=aapcs
+CFLAGS += -Wall -Werror
+CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
+CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
+CFLAGS += -fno-builtin -fshort-enums
+
+# ASM flags
+ASMFLAGS += -g3
+ASMFLAGS += -mcpu=cortex-m4
+ASMFLAGS += -mthumb -mabi=aapcs
+ASMFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
+ASMFLAGS += -DNRF52840_XXAA
+ASMFLAGS += -DBOARD_PCA10056
+
+# Linker flags
+LDFLAGS += $(OPT)
+LDFLAGS += -mthumb -mabi=aapcs -L$(SDK_ROOT)/modules/nrfx/mdk -T$(LINKER_SCRIPT)
+LDFLAGS += -mcpu=cortex-m4
+LDFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
+LDFLAGS += -Wl,--gc-sections
+LDFLAGS += --specs=nano.specs
+
+# Template path for toolchain config
+TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
+
+# Include common makefile
+include $(TEMPLATE_PATH)/Makefile.common
+
+$(foreach target, $(TARGETS), $(call define_target, $(target)))
+
+# Flash target
+flash: default
+	nrfjprog --program $(OUTPUT_DIRECTORY)/nrf52840_xxaa.hex --sectorerase --verify -f nrf52
+	nrfjprog --reset -f nrf52
+
+.PHONY: flash

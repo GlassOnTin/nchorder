@@ -1,6 +1,6 @@
 # Configuration File Format
 
-[← Back to Index](README.md) | [Previous: I2C Analysis](04-I2C_ANALYSIS.md)
+[← Back to Index](README.md) | [Previous: GPIO Discovery](03-GPIO_DISCOVERY.md)
 
 This section documents the binary `.cfg` file format used by the Twiddler 4, determined through config file examination and community documentation.
 
@@ -158,13 +158,16 @@ Value   Type              Description
 
 #### Keyboard Modifier Flags (high byte, when low byte = 0x02)
 
+**Note**: Community configs (MirrorWalk, etc.) use bit 5 for Shift. Some older formats may use bit 0.
+
 ```
 Bit   Flag    USB HID Modifier
 ---   ----    ----------------
-0     Shift   Left Shift (0x02 in USB HID)
+0     Shift*  Left Shift (0x02 in USB HID) - older format
 1     Ctrl    Left Ctrl (0x01 in USB HID)
 2     Alt     Left Alt (0x04 in USB HID)
-5     GUI     Left GUI/Windows (0x08 in USB HID)
+3     GUI     Left GUI/Windows (0x08 in USB HID)
+5     Shift   Left Shift (0x02 in USB HID) - MirrorWalk format
 ```
 
 Common modifier combinations:
@@ -173,11 +176,11 @@ Common modifier combinations:
 Value   Meaning
 -----   -------
 0x0002  Normal keypress (no modifiers)
-0x0102  Shift + key
+0x0102  Shift + key (old format, bit 0)
+0x2002  Shift + key (MirrorWalk format, bit 5)
 0x0202  Ctrl + key
 0x0402  Alt + key
-0x2002  GUI + key (Windows key combinations)
-0x0302  Ctrl + Shift + key
+0x0802  GUI + key (Windows key combinations)
 ```
 
 #### Mouse Function Codes (high byte, when low byte = 0x01)

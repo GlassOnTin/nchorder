@@ -45,7 +45,7 @@ The Twiddler 4 consists of two PCB assemblies connected by a 12-pin flat flex ca
 The main PCB contains:
 - **U1** (center): EByte E73-2G4M08S1C module containing the nRF52840 SoC. This is the "brain" of the device - a small RF module with a ceramic antenna, about 18mm × 13mm.
 - **J2** (top edge): 4-pin SWD debug header for firmware flashing and debugging
-- **J3** (right edge): 7-pin extended debug header exposing I2C bus and additional GPIO
+- **J3** (right edge): 7-pin extended debug header exposing additional GPIO
 - **J1** (bottom): USB-C connector for charging and data
 - **Battery holder**: Accepts AAA-sized Li-ion cell
 - **12 finger buttons** (back side): Arranged in a 4×3 grid (4 rows × 3 columns: L/M/R)
@@ -118,24 +118,19 @@ USB-C ──────────────┤  │    E73-2G4M08S1C Module
                     │ └────────────────┘         │        │
                     │                            │        │
                     │              J6 (12-pin FFC)        │
-                    │               GPIO + I2C + Power    │
+                    │               GPIO + Power           │
                     └────────────────────┼────────────────┘
                                          │
                     ┌────────────────────┼────────────────┐
                     │          Thumb PCB                  │
                     │    ┌───────────────┴───────────┐    │
-                    │    │      GPIO          I2C    │    │
-                    │    │        │            │     │    │
-                    │    │        ▼            ▼     │    │
-                    │    │  ┌──────────┐  ┌───────┐  │    │
-                    │    │  │ 4 Thumb  │  │Optical│  │    │
-                    │    │  │ Buttons  │  │Sensor │  │    │
-                    │    │  └──────────┘  └───────┘  │    │
-                    │    │                          │    │
-                    │    │  ┌────────────────────┐   │    │
-                    │    │  │  RGB LEDs L1-L3    │   │    │
-                    │    │  │  (I2S data line)   │   │    │
-                    │    │  └────────────────────┘   │    │
+                    │    │             GPIO              │    │
+                    │    │        │      │      │      │    │
+                    │    │        ▼      ▼      ▼      │    │
+                    │    │  ┌──────────┐ ┌───┐ ┌────┐  │    │
+                    │    │  │ 4 Thumb  │ │LED│ │Thumb│  │    │
+                    │    │  │ Buttons  │ │   │ │Sensr│  │    │
+                    │    │  └──────────┘ └───┘ └────┘  │    │
                     │    └───────────────────────────┘    │
                     └─────────────────────────────────────┘
 ```
