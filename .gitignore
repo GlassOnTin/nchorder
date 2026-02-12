@@ -20,8 +20,19 @@ sdk/
 
 # Build artifacts
 firmware/**/_build/
+firmware/_build_gpio_test/
 **/*.o
 **/*.d
+
+# Binary dumps
+firmware/rtt_dump.bin
+
+# Tool workspaces
+src/default.dwf3work
+*.dwf3work
+
+# Third-party datasheets
+docs/twiddler4/23-ADBS-A350.pdf
 
 # Logs and local files
 *.log
