@@ -3451,7 +3451,7 @@
 // <e> NRFX_SAADC_ENABLED - nrfx_saadc - SAADC peripheral driver
 //==========================================================
 #ifndef NRFX_SAADC_ENABLED
-#define NRFX_SAADC_ENABLED 0
+#define NRFX_SAADC_ENABLED 1
 #endif
 // <o> NRFX_SAADC_CONFIG_RESOLUTION  - Resolution
  
@@ -3484,7 +3484,7 @@
  
 
 #ifndef NRFX_SAADC_CONFIG_LP_MODE
-#define NRFX_SAADC_CONFIG_LP_MODE 0
+#define NRFX_SAADC_CONFIG_LP_MODE 1
 #endif
 
 // <o> NRFX_SAADC_CONFIG_IRQ_PRIORITY  - Interrupt priority
@@ -5503,7 +5503,7 @@
 // <e> SAADC_ENABLED - nrf_drv_saadc - SAADC peripheral driver - legacy layer
 //==========================================================
 #ifndef SAADC_ENABLED
-#define SAADC_ENABLED 0
+#define SAADC_ENABLED 1
 #endif
 // <o> SAADC_CONFIG_RESOLUTION  - Resolution
  
@@ -5536,7 +5536,7 @@
  
 
 #ifndef SAADC_CONFIG_LP_MODE
-#define SAADC_CONFIG_LP_MODE 0
+#define SAADC_CONFIG_LP_MODE 1
 #endif
 
 // <o> SAADC_CONFIG_IRQ_PRIORITY  - Interrupt priority

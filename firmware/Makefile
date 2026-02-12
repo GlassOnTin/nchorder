@@ -74,6 +74,7 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_uart.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_uarte.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_wdt.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_saadc.c \
   $(SDK_ROOT)/components/libraries/bsp/bsp.c \
   $(SDK_ROOT)/components/libraries/bsp/bsp_btn_ble.c \
   $(PROJ_DIR)/main.c \
@@ -145,13 +146,15 @@ ifeq ($(BOARD),xiao)
   # Note: nchorder_trill.c is #include'd into nchorder_buttons.c
   SRC_FILES += \
     $(PROJ_DIR)/src/nchorder_led_gpio.c \
+    $(PROJ_DIR)/src/nchorder_battery.c \
     $(PROJ_DIR)/src/nchorder_i2c.c \
     $(PROJ_DIR)/src/raw_i2c_test.c \
     $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c
 else
-  # Twiddler4/DK: RGB LEDs (bit-bang), I2C, and optical sensor
+  # Twiddler4/DK: RGB LEDs (bit-bang), I2C, optical sensor, and battery
   SRC_FILES += \
     $(PROJ_DIR)/src/nchorder_led.c \
+    $(PROJ_DIR)/src/nchorder_battery.c \
     $(PROJ_DIR)/src/nchorder_i2c.c \
     $(PROJ_DIR)/src/nchorder_optical.c \
     $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_twim.c \

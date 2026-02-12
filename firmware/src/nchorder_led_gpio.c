@@ -99,6 +99,23 @@ void nchorder_led_indicate_error(void)
     nchorder_led_update();
 }
 
+void nchorder_led_power_off(void)
+{
+    // No-op: GPIO LED has no power transistor
+}
+
+void nchorder_led_power_on(void)
+{
+    // No-op: GPIO LED has no power transistor
+}
+
+void nchorder_led_show_timed(uint32_t ms)
+{
+    (void)ms;
+    // No-op: GPIO LED driver doesn't support timed display
+    nchorder_led_update();
+}
+
 bool nchorder_led_is_ready(void)
 {
     return true;  // GPIO is always ready

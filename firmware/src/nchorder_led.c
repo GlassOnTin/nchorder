@@ -8,6 +8,11 @@
  * - P1.13 (PIN_LED_DATA) is the data line
  * - 3 RGB LEDs in RGB order (NOT GRB like WS2812), daisy-chained
  *
+ * Power management:
+ * - LEDs are the dominant current draw (~20-60mA via Q1)
+ * - Auto-off timer powers down LEDs after timed display
+ * - Status indications show briefly then auto-off
+ *
  * Timing: Uses nrf_delay_us for reliable timing
  */
 
@@ -15,6 +20,7 @@
 #include "nchorder_config.h"
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
+#include "app_timer.h"
 #include <string.h>
 
 #include "nrf_log.h"
@@ -31,6 +37,18 @@ typedef struct {
 static led_color_t m_colors[NCHORDER_LED_COUNT];
 static bool m_initialized = false;
 static bool m_power_enabled = false;
+
+// Auto-off timer
+APP_TIMER_DEF(m_led_off_timer);
+
+/**
+ * @brief Timer callback to power off LEDs after timed display.
+ */
+static void led_off_timer_handler(void * p_context)
+{
+    UNUSED_PARAMETER(p_context);
+    nchorder_led_power_off();
+}
 
 /**
  * @brief Send a single byte using delay-based timing.
@@ -74,6 +92,14 @@ ret_code_t nchorder_led_init(void)
 
     // Initialize colors to off
     memset(m_colors, 0, sizeof(m_colors));
+
+    // Create auto-off timer
+    ret_code_t err_code = app_timer_create(&m_led_off_timer,
+                                            APP_TIMER_MODE_SINGLE_SHOT,
+                                            led_off_timer_handler);
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_WARNING("LED off timer create failed: %d", err_code);
+    }
 
     m_initialized = true;
 
@@ -142,12 +168,63 @@ void nchorder_led_off(void)
     nchorder_led_update();
 }
 
+void nchorder_led_power_off(void)
+{
+    if (!m_initialized) {
+        return;
+    }
+
+    // Send all-zero to LEDs first (prevents ghosting on power-up)
+    nchorder_led_set_all(LED_COLOR_OFF);
+    if (m_power_enabled) {
+        nchorder_led_update();
+    }
+
+    // Cut power to LED chain via Q1 transistor
+    nrf_gpio_pin_clear(PIN_LED_POWER);
+    m_power_enabled = false;
+}
+
+void nchorder_led_power_on(void)
+{
+    if (!m_initialized) {
+        return;
+    }
+
+    if (!m_power_enabled) {
+        nrf_gpio_pin_set(PIN_LED_POWER);
+        m_power_enabled = true;
+        nrf_delay_ms(1);  // Stabilization delay
+    }
+}
+
+void nchorder_led_show_timed(uint32_t ms)
+{
+    if (!m_initialized) {
+        return;
+    }
+
+    // Stop any pending auto-off
+    app_timer_stop(m_led_off_timer);
+
+    // Power on and display
+    nchorder_led_update();
+
+    // Start auto-off timer
+    ret_code_t err_code = app_timer_start(m_led_off_timer,
+                                           APP_TIMER_TICKS(ms),
+                                           NULL);
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_WARNING("LED off timer start failed: %d", err_code);
+    }
+}
+
 void nchorder_led_indicate_ble_connected(void)
 {
     nchorder_led_set(LED_L1, LED_DIM_GREEN);
     nchorder_led_set(LED_L2, LED_COLOR_OFF);
     nchorder_led_set(LED_L3, LED_COLOR_OFF);
-    nchorder_led_update();
+    nchorder_led_show_timed(2000);
 }
 
 void nchorder_led_indicate_ble_advertising(void)
@@ -155,7 +232,7 @@ void nchorder_led_indicate_ble_advertising(void)
     nchorder_led_set(LED_L1, LED_DIM_BLUE);
     nchorder_led_set(LED_L2, LED_COLOR_OFF);
     nchorder_led_set(LED_L3, LED_COLOR_OFF);
-    nchorder_led_update();
+    nchorder_led_show_timed(2000);
 }
 
 void nchorder_led_indicate_usb_connected(void)
@@ -163,13 +240,13 @@ void nchorder_led_indicate_usb_connected(void)
     nchorder_led_set(LED_L1, LED_COLOR_OFF);
     nchorder_led_set(LED_L2, LED_DIM_WHITE);
     nchorder_led_set(LED_L3, LED_COLOR_OFF);
-    nchorder_led_update();
+    nchorder_led_show_timed(2000);
 }
 
 void nchorder_led_indicate_error(void)
 {
     nchorder_led_set_all(LED_DIM_RED);
-    nchorder_led_update();
+    nchorder_led_show_timed(2000);
 }
 
 bool nchorder_led_is_ready(void)

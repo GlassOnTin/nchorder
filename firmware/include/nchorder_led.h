@@ -34,11 +34,11 @@
 #define LED_COLOR_CYAN          0x00, 0xFF, 0xFF
 #define LED_COLOR_MAGENTA       0xFF, 0x00, 0xFF
 
-// Dimmed versions for status indication (25% brightness)
-#define LED_DIM_RED             0x40, 0x00, 0x00
-#define LED_DIM_GREEN           0x00, 0x40, 0x00
-#define LED_DIM_BLUE            0x00, 0x00, 0x40
-#define LED_DIM_WHITE           0x40, 0x40, 0x40
+// Dimmed versions for status indication (~6% brightness, saves power)
+#define LED_DIM_RED             0x10, 0x00, 0x00
+#define LED_DIM_GREEN           0x00, 0x10, 0x00
+#define LED_DIM_BLUE            0x00, 0x00, 0x10
+#define LED_DIM_WHITE           0x10, 0x10, 0x10
 
 /**
  * @brief Initialize the LED driver.
@@ -123,5 +123,30 @@ void nchorder_led_indicate_error(void);
  * @return true if ready, false if previous transfer still in progress.
  */
 bool nchorder_led_is_ready(void);
+
+/**
+ * @brief Power off LEDs completely.
+ *
+ * Sends all-zero data, then clears Q1 transistor power enable pin.
+ * Saves ~20-60mA when LEDs are not needed.
+ */
+void nchorder_led_power_off(void);
+
+/**
+ * @brief Power on LEDs.
+ *
+ * Sets Q1 transistor power enable pin with stabilization delay.
+ */
+void nchorder_led_power_on(void);
+
+/**
+ * @brief Display current LED colors for a timed duration, then auto-off.
+ *
+ * Calls nchorder_led_update() then starts a one-shot timer.
+ * When the timer expires, LEDs are powered off via nchorder_led_power_off().
+ *
+ * @param[in] ms  Duration in milliseconds before auto-off.
+ */
+void nchorder_led_show_timed(uint32_t ms);
 
 #endif // NCHORDER_LED_H

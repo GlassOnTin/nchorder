@@ -69,7 +69,7 @@
 #include "ble_bas.h"
 #include "ble_dis.h"
 #include "ble_conn_params.h"
-#include "sensorsim.h"
+// sensorsim removed - using real battery measurement via SAADC
 #include "bsp_btn_ble.h"
 #include "app_scheduler.h"
 #include "nrf_sdh.h"
@@ -105,6 +105,7 @@
 #include "nchorder_cdc.h"
 #include "nchorder_led.h"
 #include "nchorder_flash.h"
+#include "nchorder_battery.h"
 #include "nchorder_i2c.h"
 #include "nchorder_optical.h"
 #include "nchorder_mouse.h"
@@ -239,10 +240,7 @@ static inline void wdt_feed(void)
 #define APP_BLE_OBSERVER_PRIO               3                                          /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 #define APP_BLE_CONN_CFG_TAG                1                                          /**< A tag identifying the SoftDevice BLE configuration. */
 
-#define BATTERY_LEVEL_MEAS_INTERVAL         APP_TIMER_TICKS(2000)                      /**< Battery level measurement interval (ticks). */
-#define MIN_BATTERY_LEVEL                   81                                         /**< Minimum simulated battery level. */
-#define MAX_BATTERY_LEVEL                   100                                        /**< Maximum simulated battery level. */
-#define BATTERY_LEVEL_INCREMENT             1                                          /**< Increment between each simulated battery level measurement. */
+#define BATTERY_LEVEL_MEAS_INTERVAL         APP_TIMER_TICKS(60000)                     /**< Battery level measurement interval (60 seconds). */
 
 /* PNP ID configuration
  * Using Nordic's VID (0x1915) for community firmware.
@@ -254,8 +252,8 @@ static inline void wdt_feed(void)
 #define PNP_ID_PRODUCT_ID                   0x0004                                     /**< Product ID (Twiddler 4). */
 #define PNP_ID_PRODUCT_VERSION              0x0100                                     /**< Product Version (1.0.0 community). */
 
-#define APP_ADV_FAST_INTERVAL               0x0028                                     /**< Fast advertising interval (in units of 0.625 ms. This value corresponds to 25 ms.). */
-#define APP_ADV_SLOW_INTERVAL               0x0320                                     /**< Slow advertising interval (in units of 0.625 ms. 0x320=500ms for debug). */
+#define APP_ADV_FAST_INTERVAL               0x00A0                                     /**< Fast advertising interval (in units of 0.625 ms. 0xA0=100ms). */
+#define APP_ADV_SLOW_INTERVAL               0x0640                                     /**< Slow advertising interval (in units of 0.625 ms. 0x640=1000ms). */
 
 #define APP_ADV_FAST_DURATION               18000                                      /**< The advertising duration of fast advertising in units of 10 milliseconds (3 min for debug). */
 #define APP_ADV_SLOW_DURATION               18000                                      /**< The advertising duration of slow advertising in units of 10 milliseconds. */
@@ -392,8 +390,6 @@ BLE_ADVERTISING_DEF(m_advertising);                                 /**< Adverti
 
 static bool              m_in_boot_mode = false;                    /**< Current protocol mode. */
 static uint16_t          m_conn_handle  = BLE_CONN_HANDLE_INVALID;  /**< Handle of the current connection. */
-static sensorsim_cfg_t   m_battery_sim_cfg;                         /**< Battery Level sensor simulator configuration. */
-static sensorsim_state_t m_battery_sim_state;                       /**< Battery Level sensor simulator state. */
 static bool              m_caps_on = false;                         /**< Variable to indicate if Caps Lock is turned on. */
 static pm_peer_id_t      m_peer_id;                                 /**< Device reference handle to the current bonded central. */
 static buffer_list_t     buffer_list;                               /**< List to enqueue not just data to be sent, but also related information like the handle, connection handle etc */
@@ -576,11 +572,11 @@ static void advertising_start(bool erase_bonds)
             nrf_delay_ms(50);
         }
 
-        // Flash green to indicate BLE OK
+        // Flash green to indicate BLE OK (auto-off)
         nchorder_led_set(0, LED_COLOR_GREEN);
         nchorder_led_set(1, LED_COLOR_GREEN);
         nchorder_led_set(2, LED_COLOR_GREEN);
-        nchorder_led_update();
+        nchorder_led_show_timed(2000);
     }
     else if (ret == NRF_ERROR_INVALID_STATE)
     {
@@ -591,11 +587,11 @@ static void advertising_start(bool erase_bonds)
     {
         NRF_LOG_ERROR("BLE advertising FAILED: 0x%08X", ret);
         nchorder_cdc_debug("BLE FAILED: 0x%08X\r\n", ret);
-        // Flash red to indicate BLE failure
+        // Flash red to indicate BLE failure (auto-off)
         nchorder_led_set(0, LED_COLOR_RED);
         nchorder_led_set(1, LED_COLOR_RED);
         nchorder_led_set(2, LED_COLOR_RED);
-        nchorder_led_update();
+        nchorder_led_show_timed(2000);
         APP_ERROR_CHECK(ret);
     }
 }
@@ -677,9 +673,11 @@ static void ble_advertising_error_handler(uint32_t nrf_error)
 static void battery_level_update(void)
 {
     ret_code_t err_code;
-    uint8_t  battery_level;
 
-    battery_level = (uint8_t)sensorsim_measure(&m_battery_sim_state, &m_battery_sim_cfg);
+    uint16_t voltage_mv = nchorder_battery_measure();
+    uint8_t battery_level = nchorder_battery_level_percent(voltage_mv);
+
+    NRF_LOG_INFO("Battery: %dmV = %d%%", voltage_mv, battery_level);
 
     err_code = ble_bas_battery_level_update(&m_bas, battery_level, BLE_CONN_HANDLE_ALL);
     if ((err_code != NRF_SUCCESS) &&
@@ -759,14 +757,13 @@ static void debug_status_timeout_handler(void * p_context)
 {
     UNUSED_PARAMETER(p_context);
 
-    // Toggle LED2 between green and blue (heartbeat)
+    // Brief heartbeat flash (auto-off preserves battery)
     static bool blink_state = false;
     blink_state = !blink_state;
-    nchorder_led_set(2, blink_state ? LED_COLOR_BLUE : LED_COLOR_GREEN);
-
-    // LED0: Show CDC port state
-    nchorder_led_set(0, nchorder_cdc_is_open() ? LED_COLOR_GREEN : LED_COLOR_RED);
-    nchorder_led_update();
+    nchorder_led_set(LED_L1, LED_COLOR_OFF);
+    nchorder_led_set(LED_L2, blink_state ? LED_DIM_BLUE : LED_DIM_GREEN);
+    nchorder_led_set(LED_L3, LED_COLOR_OFF);
+    nchorder_led_show_timed(200);
 
     // Print BLE status
     ble_gap_addr_t addr;
@@ -1191,16 +1188,14 @@ static void services_init(void)
 }
 
 
-/**@brief Function for initializing the battery sensor simulator.
+/**@brief Function for initializing the battery measurement module.
  */
-static void sensor_simulator_init(void)
+static void battery_init(void)
 {
-    m_battery_sim_cfg.min          = MIN_BATTERY_LEVEL;
-    m_battery_sim_cfg.max          = MAX_BATTERY_LEVEL;
-    m_battery_sim_cfg.incr         = BATTERY_LEVEL_INCREMENT;
-    m_battery_sim_cfg.start_at_max = true;
-
-    sensorsim_init(&m_battery_sim_state, &m_battery_sim_cfg);
+    ret_code_t err_code = nchorder_battery_init();
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_WARNING("Battery init failed: %d", err_code);
+    }
 }
 
 
@@ -1765,6 +1760,11 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
+            // Set connected TX power to 0 dBm (matches advertising)
+            err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_CONN, m_conn_handle, 0);
+            if (err_code != NRF_SUCCESS) {
+                NRF_LOG_WARNING("Failed to set conn TX power: 0x%08X", err_code);
+            }
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
@@ -2109,8 +2109,8 @@ static void advertising_init(void)
 
     ble_advertising_conn_cfg_tag_set(&m_advertising, APP_BLE_CONN_CFG_TAG);
 
-    // Set TX power to maximum (+8 dBm) for better range
-    err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, 8);
+    // Set TX power to 0 dBm (saves ~5mA vs +8 dBm, adequate range for desk use)
+    err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, 0);
     if (err_code != NRF_SUCCESS) {
         NRF_LOG_WARNING("Failed to set TX power: 0x%08X", err_code);
     }
@@ -2421,7 +2421,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_MAGENTA);
             nchorder_led_set(1, LED_COLOR_OFF);
             nchorder_led_set(2, LED_COLOR_MAGENTA);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             // TODO: Implement actual sleep mode
             // For now, just indicate the chord was recognized
             break;
@@ -2433,7 +2433,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_GREEN);
             nchorder_led_set(1, LED_COLOR_GREEN);
             nchorder_led_set(2, LED_COLOR_GREEN);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             // TODO: Read actual battery voltage via ADC
             break;
 
@@ -2444,7 +2444,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_CYAN);
             nchorder_led_set(1, LED_COLOR_CYAN);
             nchorder_led_set(2, LED_COLOR_CYAN);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             break;
 
         case SYS_CHORD_PRINT_STATUS:
@@ -2461,7 +2461,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_WHITE);
             nchorder_led_set(1, LED_COLOR_WHITE);
             nchorder_led_set(2, LED_COLOR_WHITE);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             break;
 
         case SYS_CHORD_CYCLE_NAV_MODE:
@@ -2471,7 +2471,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_BLUE);
             nchorder_led_set(1, LED_COLOR_OFF);
             nchorder_led_set(2, LED_COLOR_BLUE);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             break;
 
         case SYS_CHORD_CYCLE_CONFIG:
@@ -2481,7 +2481,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_YELLOW);
             nchorder_led_set(1, LED_COLOR_OFF);
             nchorder_led_set(2, LED_COLOR_YELLOW);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             break;
 
         case SYS_CHORD_CYCLE_BLE_SLOT:
@@ -2491,7 +2491,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_BLUE);
             nchorder_led_set(1, LED_COLOR_BLUE);
             nchorder_led_set(2, LED_COLOR_OFF);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             break;
 
         case SYS_CHORD_ERASE_BLE_PAIRS:
@@ -2501,7 +2501,7 @@ static void handle_system_chord(system_chord_action_t action)
             nchorder_led_set(0, LED_COLOR_RED);
             nchorder_led_set(1, LED_COLOR_RED);
             nchorder_led_set(2, LED_COLOR_RED);
-            nchorder_led_update();
+            nchorder_led_show_timed(2000);
             // Delete all bonds
             ret_code_t err = pm_peers_delete();
             if (err == NRF_SUCCESS) {
@@ -2730,7 +2730,7 @@ int main(void)
     gatt_init();
     advertising_init();
     services_init();
-    sensor_simulator_init();
+    battery_init();
     conn_params_init();
     buffer_init();
     peer_manager_init();
@@ -2748,11 +2748,11 @@ int main(void)
     NRF_LOG_FLUSH();
 #endif
 
-    // Test all 3 LEDs: L1=Red, L2=Green, L3=Blue
+    // Test all 3 LEDs: L1=Red, L2=Green, L3=Blue (auto-off after 500ms)
     nchorder_led_set(0, LED_COLOR_RED);
     nchorder_led_set(1, LED_COLOR_GREEN);
     nchorder_led_set(2, LED_COLOR_BLUE);
-    nchorder_led_update();
+    nchorder_led_show_timed(500);
 
     nchorder_init();
 
