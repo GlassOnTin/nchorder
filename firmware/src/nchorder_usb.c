@@ -218,8 +218,45 @@ uint32_t nchorder_usb_start(void)
 {
 #if defined(BOARD_XIAO_NRF52840) || defined(BOARD_TWIDDLER4) || defined(BOARD_IS_DK)
     // XIAO/Twiddler4/DK: Skip power events (crashes with SoftDevice), manually start USB
-    // USB is always connected when device is plugged in
     NRF_LOG_INFO("USB: Manual start (no power detection)");
+
+    // Poll USBREGSTATUS to handle the case where VBUS was already present at
+    // boot (e.g. battery died while plugged in).  The POWER_DETECTED / POWER_READY
+    // events only fire on edges, so we must check the current state explicitly.
+    uint32_t regstatus = NRF_POWER->USBREGSTATUS;
+    SEGGER_RTT_printf(0, "USB: USBREGSTATUS=0x%x (VBUS=%d OUTPUTRDY=%d)\n",
+                      regstatus,
+                      (regstatus & POWER_USBREGSTATUS_VBUSDETECT_Msk) ? 1 : 0,
+                      (regstatus & POWER_USBREGSTATUS_OUTPUTRDY_Msk) ? 1 : 0);
+
+    if (!(regstatus & POWER_USBREGSTATUS_VBUSDETECT_Msk))
+    {
+        // No VBUS — USB cable not connected, nothing to start
+        NRF_LOG_WARNING("USB: No VBUS detected, skipping start");
+        return NRF_ERROR_INVALID_STATE;
+    }
+
+    // Wait for USB regulator output to settle (OUTPUTRDY) if VBUS is present
+    // but the regulator hasn't stabilised yet
+    if (!(regstatus & POWER_USBREGSTATUS_OUTPUTRDY_Msk))
+    {
+        SEGGER_RTT_printf(0, "USB: Waiting for regulator...\n");
+        for (int i = 0; i < 200; i++)
+        {
+            nrf_delay_ms(1);
+            regstatus = NRF_POWER->USBREGSTATUS;
+            if (regstatus & POWER_USBREGSTATUS_OUTPUTRDY_Msk)
+            {
+                SEGGER_RTT_printf(0, "USB: Regulator ready after %d ms\n", i);
+                break;
+            }
+        }
+        if (!(regstatus & POWER_USBREGSTATUS_OUTPUTRDY_Msk))
+        {
+            NRF_LOG_WARNING("USB: Regulator timeout, attempting start anyway");
+        }
+    }
+
     app_usbd_enable();
     app_usbd_start();
 
