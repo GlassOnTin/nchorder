@@ -11,6 +11,7 @@ Cross-platform: Windows, Linux, Mac, Android (via Kivy/Buildozer)
 """
 
 import os
+import sys
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -31,6 +32,38 @@ from kivy.utils import platform
 
 # Platform detection
 _ANDROID = platform == 'android'
+
+
+def _get_configs_dir():
+    """Find the configs directory across packaging and dev environments.
+
+    Search order:
+    1. PyInstaller bundle (sys._MEIPASS/configs)
+    2. Dev tree / Nuitka (relative to app.py source)
+    3. Working directory (Android / running from repo root)
+    4. User config dir (~/.config/nchorder)
+    """
+    candidates = []
+
+    # PyInstaller bundle
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        candidates.append(Path(meipass) / 'configs')
+
+    # Dev tree / Nuitka: app.py is src/nchorder_tools/gui/app.py (4 levels up)
+    candidates.append(Path(__file__).resolve().parent.parent.parent.parent / 'configs')
+
+    # CWD (Android / repo root)
+    candidates.append(Path.cwd() / 'configs')
+
+    # User config dir
+    candidates.append(Path.home() / '.config' / 'nchorder')
+
+    for p in candidates:
+        if p.is_dir():
+            return p
+    return None
+
 
 from .touch_view import TouchVisualizer
 from .chord_view import ChordMapView, ChordConfig
@@ -405,30 +438,29 @@ class MainLayout(BoxLayout):
 
     def _try_load_default_config(self):
         """Try to load a default config file on startup"""
-        # Look for config in common locations
-        search_paths = [
-            Path.cwd() / 'configs' / 'mirrorwalk_nomcc_fixed.cfg',
-            Path.cwd() / 'configs',
-            Path.home() / '.config' / 'nchorder',
-        ]
-        for path in search_paths:
-            if path.is_file():
-                self._load_config_file(str(path))
-                break
-            elif path.is_dir():
-                # Look for any .cfg file
-                cfgs = list(path.glob('*.cfg'))
-                if cfgs:
-                    self._load_config_file(str(cfgs[0]))
-                    break
+        configs_dir = _get_configs_dir()
+        if configs_dir is None:
+            return
+
+        # Prefer the default config
+        preferred = configs_dir / 'mirrorwalk_nomcc_fixed.cfg'
+        if preferred.is_file():
+            self._load_config_file(str(preferred))
+            return
+
+        # Fall back to any .cfg file
+        cfgs = list(configs_dir.glob('*.cfg'))
+        if cfgs:
+            self._load_config_file(str(cfgs[0]))
 
     def _on_load_config(self, instance):
         """Show file chooser to load config"""
         from kivy.uix.filechooser import FileChooserListView
 
         content = BoxLayout(orientation='vertical')
+        configs_dir = _get_configs_dir()
         chooser = FileChooserListView(
-            path=str(Path.cwd() / 'configs') if (Path.cwd() / 'configs').exists() else str(Path.home()),
+            path=str(configs_dir) if configs_dir else str(Path.home()),
             filters=['*.cfg']
         )
         content.add_widget(chooser)
