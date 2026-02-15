@@ -323,11 +323,14 @@ jobs:
 
             | Platform | File |
             |----------|------|
+            | Android | `${{ env.APP_NAME }}-android.apk` |
             | Linux (x64) | `${{ env.APP_NAME }}-linux-x86_64` |
             | macOS (Apple Silicon) | `${{ env.APP_NAME }}-macos-arm64.zip` |
             | Windows (x64) | `${{ env.APP_NAME }}-windows-x64.zip` |
 
             ### Installation
+
+            **Android**: Download APK, enable "Install unknown apps" in Settings, open APK to install
 
             **Linux**: `chmod +x nchorder-gui-linux-x86_64 && ./nchorder-gui-linux-x86_64`
 
@@ -338,6 +341,6 @@ jobs:
             ### Notes
 
             - Windows build is a folder (not single exe) for faster startup
-            - Android APK: Coming in a future release
+            - Android requires USB-C OTG adapter for device connection
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
