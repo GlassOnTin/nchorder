@@ -46,6 +46,10 @@ else:
     except ImportError:
         pass
 
+# Serial error base class — pyserial's SerialException on desktop,
+# OSError on Android where pyserial isn't available
+_SerialError = getattr(serial, 'SerialException', OSError)
+
 
 class CDCCommand(IntEnum):
     """CDC protocol command codes"""
@@ -462,7 +466,7 @@ class NChorderDevice:
             self._serial.reset_input_buffer()
             self._serial.write(bytes([cmd]) + data)
             return self._serial.read(64)
-        except serial.SerialException:
+        except _SerialError:
             return None
 
     def get_version(self) -> Optional[DeviceVersion]:
@@ -624,7 +628,7 @@ class NChorderDevice:
                     except ValueError:
                         pass
 
-            except serial.SerialException:
+            except _SerialError:
                 break
 
     # Chord management (TODO: implement in firmware)

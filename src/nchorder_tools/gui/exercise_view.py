@@ -398,7 +398,7 @@ class ExerciseDisplay(Widget):
         if not self.target_text:
             # Show placeholder - use dp() for proper scaling
             with self.canvas.after:
-                label = CoreLabel(text='Press Start to begin', font_size=dp(24))
+                label = CoreLabel(text='Press Start to begin', font_size=dp(28))
                 label.refresh()
                 texture = label.texture
                 Color(0.5, 0.5, 0.5, 1)
@@ -411,7 +411,7 @@ class ExerciseDisplay(Widget):
 
         # Draw scrolling text display - use dp() for scaling
         with self.canvas.after:
-            font_size = dp(24)
+            font_size = dp(28)
             char_width = font_size * 0.65  # Monospace width
 
             # Calculate visible window - cursor at 1/4 from left for look-ahead
@@ -485,22 +485,22 @@ class ExerciseStats(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = 'horizontal'
         self.size_hint_y = None
-        self.height = dp(40)
+        self.height = dp(48)
         self.padding = dp(8)
         self.spacing = dp(10)
 
         # Time display
-        self.time_label = Label(text='Time: 00:00', size_hint_x=0.25, halign='left')
+        self.time_label = Label(text='Time: 00:00', size_hint_x=0.25, halign='left', font_size='16sp')
         self.time_label.bind(size=self.time_label.setter('text_size'))
 
         # WPM display
-        self.wpm_label = Label(text='WPM: 0', size_hint_x=0.25, halign='center')
+        self.wpm_label = Label(text='WPM: 0', size_hint_x=0.25, halign='center', font_size='16sp')
 
         # Accuracy display
-        self.accuracy_label = Label(text='Accuracy: 100%', size_hint_x=0.25, halign='center')
+        self.accuracy_label = Label(text='Accuracy: 100%', size_hint_x=0.25, halign='center', font_size='16sp')
 
         # Progress display
-        self.progress_label = Label(text='Progress: 0/0', size_hint_x=0.25, halign='right')
+        self.progress_label = Label(text='Progress: 0/0', size_hint_x=0.25, halign='right', font_size='16sp')
         self.progress_label.bind(size=self.progress_label.setter('text_size'))
 
         self.add_widget(self.time_label)
@@ -564,7 +564,7 @@ class ExerciseView(BoxLayout):
         self._kb_buttons = 0   # Current keyboard-simulated button bitmask
 
         # Toolbar
-        toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(44), spacing=dp(8))
+        toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(48), spacing=dp(8))
 
         # Lesson selector
         lesson_names = [f'{name}' for name, desc, _ in LESSONS]
@@ -605,8 +605,8 @@ class ExerciseView(BoxLayout):
         self.status_label = Label(
             text='Load a chord config to begin',
             size_hint_y=None,
-            height=dp(28),
-            font_size='13sp',
+            height=dp(36),
+            font_size='18sp',
             color=(0.7, 0.7, 0.7, 1)
         )
         self.add_widget(self.status_label)
@@ -1110,7 +1110,7 @@ class ExerciseView(BoxLayout):
             if hint_parts:
                 keys_label = Label(
                     text='  or  '.join(hint_parts),
-                    font_size='14sp',
+                    font_size='17sp',
                     color=(0.9, 0.9, 0.5, 1),
                     size_hint_y=0.1
                 )
@@ -1119,7 +1119,7 @@ class ExerciseView(BoxLayout):
         # Dismiss hint
         hint_label = Label(
             text='(tap to dismiss)',
-            font_size='11sp',
+            font_size='14sp',
             color=(0.5, 0.5, 0.5, 1),
             size_hint_y=0.1
         )
