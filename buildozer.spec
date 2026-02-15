@@ -32,7 +32,7 @@ version = 0.1.3
 
 # (list) Application requirements
 # usb4a/usbserial4a required for Android USB host serial communication
-requirements = python3,kivy==2.3.0,pyserial,usb4a,usbserial4a
+requirements = python3,kivy==2.3.0,pyserial,pyjnius,usb4a,usbserial4a
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -82,11 +82,10 @@ android.presplash_color = #2E7D32
 #icon.adaptive_background.filename = %(source.dir)s/data/icon_bg.png
 
 # (list) Permissions
-# USB host permission is required for serial communication
-android.permissions = INTERNET,USB_HOST
+android.permissions = INTERNET
 
 # (list) features (adds uses-feature -tags to manifest)
-# Note: android.features not supported by p4a toolchain, use manifest template instead
+# USB host feature declared via extra_manifest_xml instead (p4a doesn't support android.features)
 #android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
@@ -135,8 +134,7 @@ android.accept_sdk_license = True
 #android.activity_class_name = org.kivy.android.PythonActivity
 
 # (str) Extra xml to write directly inside the <manifest> element of AndroidManifest.xml
-# use that parameter to provide a filename from where to load your custom XML code
-#android.extra_manifest_xml = ./src/android/extra_manifest.xml
+android.extra_manifest_xml = ./manifest/extra_manifest.xml
 
 # (str) Extra xml to write directly inside the <manifest><application> tag of AndroidManifest.xml
 # use that parameter to provide a filename from where to load your custom XML code
@@ -185,7 +183,8 @@ android.accept_sdk_license = True
 # res/resource.xml:xml/resource.xml
 # 3) Copy res/resources/* to res/xml/
 # res/resources/*.xml:xml
-#android.add_resources =
+# USB device filter for automatic permission on plug-in
+android.add_resources = manifest/device_filter.xml:xml/device_filter.xml
 
 # (list) Gradle dependencies to add
 #android.gradle_dependencies =
@@ -222,7 +221,7 @@ android.accept_sdk_license = True
 #android.ouya.icon.filename = %(source.dir)s/data/ouya_icon.png
 
 # (str) XML file to include as an intent filters in <activity> tag
-#android.manifest.intent_filters =
+android.manifest.intent_filters = ./manifest/intent-filter.xml
 
 # (str) launchMode to set for the main activity
 #android.manifest.launch_mode = standard

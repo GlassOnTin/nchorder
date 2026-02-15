@@ -368,18 +368,40 @@ class NChorderDevice:
         """
         Request USB permission for device (Android only).
 
-        This shows a system dialog asking the user to grant permission.
+        Bypasses usb4a's request_usb_device_permission() which uses
+        FLAG_IMMUTABLE — broken on Android 12+ because the USB system
+        needs FLAG_MUTABLE to write EXTRA_PERMISSION_GRANTED into the
+        PendingIntent result.
+
         Returns True if permission request was initiated (not if granted).
         Call has_usb_permission() after user responds to check result.
         """
         if not _ANDROID:
             return True  # Desktop doesn't need explicit permission
         try:
+            from jnius import autoclass
             from usb4a import usb
+
             device = usb.get_usb_device(device_name)
             if device is None:
                 return False
-            usb.request_usb_device_permission(device)
+
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Context = autoclass('android.content.Context')
+            Intent = autoclass('android.content.Intent')
+            PendingIntent = autoclass('android.app.PendingIntent')
+
+            context = PythonActivity.mActivity
+            usb_manager = context.getSystemService(Context.USB_SERVICE)
+
+            intent = Intent('org.nchorder.USB_PERMISSION')
+            intent.setPackage(context.getPackageName())
+
+            # FLAG_MUTABLE (1 << 25) so system can add EXTRA_PERMISSION_GRANTED
+            pintent = PendingIntent.getBroadcast(
+                context, 0, intent, 1 << 25
+            )
+            usb_manager.requestPermission(device, pintent)
             return True
         except Exception:
             return False
