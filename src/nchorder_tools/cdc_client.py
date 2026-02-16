@@ -351,17 +351,41 @@ class NChorderDevice:
 
     @classmethod
     def has_usb_permission(cls, device_name: str) -> bool:
-        """Check if we have USB permission for the device (Android only)."""
+        """Check if we have USB permission for the device (Android only).
+
+        Checks UsbManager.hasPermission() directly via pyjnius rather
+        than going through usb4a, which may not see permissions granted
+        via the USB_DEVICE_ATTACHED intent filter.
+        """
         if not _ANDROID:
             return True  # Desktop doesn't need explicit permission
         try:
+            from jnius import autoclass
             from usb4a import usb
+
             device = usb.get_usb_device(device_name)
             if device is None:
                 return False
-            return usb.has_usb_device_permission(device)
-        except Exception:
-            return False
+
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Context = autoclass('android.content.Context')
+            context = PythonActivity.mActivity
+            usb_manager = context.getSystemService(Context.USB_SERVICE)
+            result = usb_manager.hasPermission(device)
+            print(f"[USB] hasPermission({device_name}) = {result}", flush=True)
+            return result
+        except Exception as e:
+            print(f"[USB] hasPermission pyjnius failed: {e}", flush=True)
+            # Fall back to usb4a
+            try:
+                from usb4a import usb
+                device = usb.get_usb_device(device_name)
+                result = device is not None and usb.has_usb_device_permission(device)
+                print(f"[USB] hasPermission usb4a fallback = {result}", flush=True)
+                return result
+            except Exception as e2:
+                print(f"[USB] hasPermission usb4a fallback failed: {e2}", flush=True)
+                return False
 
     @classmethod
     def request_usb_permission(cls, device_name: str) -> bool:
@@ -402,8 +426,10 @@ class NChorderDevice:
                 context, 0, intent, 1 << 25
             )
             usb_manager.requestPermission(device, pintent)
+            print(f"[USB] requestPermission called for {device_name}", flush=True)
             return True
-        except Exception:
+        except Exception as e:
+            print(f"[USB] requestPermission failed: {e}", flush=True)
             return False
 
     def connect(self, timeout: float = 1.0) -> bool:
@@ -428,16 +454,14 @@ class NChorderDevice:
 
         try:
             if self._is_android:
-                # Android USB serial - check permission first
+                # Android USB serial - check permission via our fixed method
+                if not self.has_usb_permission(port):
+                    self.request_usb_permission(port)
+                    return False  # Can't connect yet, waiting for permission
                 from usb4a import usb
                 device = usb.get_usb_device(port)
                 if device is None:
                     return False
-                # Check if we have permission
-                if not usb.has_usb_device_permission(device):
-                    # Request permission - this shows a dialog to the user
-                    usb.request_usb_device_permission(device)
-                    return False  # Can't connect yet, waiting for permission
                 self._serial = usb_serial.get_serial_port(
                     port,
                     baudrate=115200,

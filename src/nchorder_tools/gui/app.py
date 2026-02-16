@@ -528,11 +528,18 @@ class MainLayout(BoxLayout):
 
             # On Android, check USB permission first
             if _ANDROID and not NChorderDevice.has_usb_permission(device_name):
-                self.connection_overlay.status_label.text = (
-                    'Device found!\nPlease grant USB permission...'
-                )
-                # Request permission - this shows a system dialog
-                NChorderDevice.request_usb_permission(device_name)
+                if not hasattr(self, '_usb_perm_requested'):
+                    self._usb_perm_requested = True
+                    self.connection_overlay.status_label.text = (
+                        'Device found!\nRequesting USB permission...'
+                    )
+                    ok = NChorderDevice.request_usb_permission(device_name)
+                    if not ok:
+                        self.connection_overlay.status_label.text = (
+                            'Device found!\n'
+                            'USB permission request failed.\n'
+                            'Try unplugging and re-plugging the device.'
+                        )
                 return
 
             self.device = NChorderDevice(device_name)
