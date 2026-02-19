@@ -416,6 +416,10 @@ class MainLayout(BoxLayout):
         # Add tabs to layout
         self.add_widget(self.tabs)
 
+        # Log platform info on Android
+        if _ANDROID:
+            NChorderDevice.log_platform_info()
+
         # Auto-connect to first device found
         Clock.schedule_once(lambda dt: self._auto_connect(), 0.5)
         # Periodically check for device reconnection
@@ -528,8 +532,12 @@ class MainLayout(BoxLayout):
 
             # On Android, check USB permission first
             if _ANDROID and not NChorderDevice.has_usb_permission(device_name):
-                if not hasattr(self, '_usb_perm_requested'):
-                    self._usb_perm_requested = True
+                # Request permission with cooldown (allow retry every 10s)
+                import time
+                now = time.time()
+                last_req = getattr(self, '_usb_perm_last_request', 0)
+                if now - last_req > 10:
+                    self._usb_perm_last_request = now
                     self.connection_overlay.status_label.text = (
                         'Device found!\nRequesting USB permission...'
                     )

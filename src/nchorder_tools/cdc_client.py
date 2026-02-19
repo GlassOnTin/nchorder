@@ -258,6 +258,31 @@ class NChorderDevice:
     VID = 0x1915
     PID = 0x520F
 
+    @classmethod
+    def log_platform_info(cls):
+        """Log platform and USB subsystem info (call once at startup)."""
+        if not _ANDROID:
+            return
+        try:
+            from jnius import autoclass
+            Build = autoclass('android.os.Build')
+            Build_VERSION = autoclass('android.os.Build$VERSION')
+            print(f"[USB] Android API {Build_VERSION.SDK_INT} "
+                  f"({Build.MANUFACTURER} {Build.MODEL})", flush=True)
+
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            context = PythonActivity.mActivity
+            pkg = context.getPackageName()
+            print(f"[USB] Package: {pkg}", flush=True)
+
+            # Check USB host support
+            PackageManager = autoclass('android.content.pm.PackageManager')
+            pm = context.getPackageManager()
+            has_usb_host = pm.hasSystemFeature("android.hardware.usb.host")
+            print(f"[USB] USB host feature: {has_usb_host}", flush=True)
+        except Exception as e:
+            print(f"[USB] log_platform_info failed: {e}", flush=True)
+
     def __init__(self, port: Optional[str] = None):
         """
         Initialize device connection.
@@ -287,13 +312,27 @@ class NChorderDevice:
                 return f"Android USB: usb4a not available ({_usb4a_error or 'not imported'})"
             try:
                 from usb4a import usb
+                # Report Android API level
+                api_info = ""
+                try:
+                    from jnius import autoclass
+                    Build_VERSION = autoclass('android.os.Build$VERSION')
+                    api_info = f" (API {Build_VERSION.SDK_INT})"
+                except Exception:
+                    pass
+
                 device_list = usb.get_usb_device_list()
                 if not device_list:
-                    return "Android USB: No devices found"
+                    return f"Android USB{api_info}: No devices found"
                 info = []
                 for d in device_list:
-                    info.append(f"{d.getDeviceName()}: VID={hex(d.getVendorId())} PID={hex(d.getProductId())}")
-                return f"Android USB: {len(device_list)} device(s): " + ", ".join(info)
+                    perm = ""
+                    try:
+                        perm = " PERM" if cls.has_usb_permission(d.getDeviceName()) else " NO_PERM"
+                    except Exception:
+                        pass
+                    info.append(f"{d.getDeviceName()}: VID={hex(d.getVendorId())} PID={hex(d.getProductId())}{perm}")
+                return f"Android USB{api_info}: {len(device_list)} device(s): " + ", ".join(info)
             except Exception as e:
                 return f"Android USB error: {e}"
         else:
@@ -350,6 +389,20 @@ class NChorderDevice:
             return devices if devices else candidates
 
     @classmethod
+    def _get_usb_manager(cls):
+        """Get Android UsbManager via pyjnius. Returns (usb_manager, context) or (None, None)."""
+        try:
+            from jnius import autoclass
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Context = autoclass('android.content.Context')
+            context = PythonActivity.mActivity
+            usb_manager = context.getSystemService(Context.USB_SERVICE)
+            return usb_manager, context
+        except Exception as e:
+            print(f"[USB] _get_usb_manager failed: {e}", flush=True)
+            return None, None
+
+    @classmethod
     def has_usb_permission(cls, device_name: str) -> bool:
         """Check if we have USB permission for the device (Android only).
 
@@ -360,22 +413,22 @@ class NChorderDevice:
         if not _ANDROID:
             return True  # Desktop doesn't need explicit permission
         try:
-            from jnius import autoclass
             from usb4a import usb
 
             device = usb.get_usb_device(device_name)
             if device is None:
+                print(f"[USB] hasPermission: get_usb_device({device_name}) returned None", flush=True)
                 return False
 
-            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            Context = autoclass('android.content.Context')
-            context = PythonActivity.mActivity
-            usb_manager = context.getSystemService(Context.USB_SERVICE)
+            usb_manager, context = cls._get_usb_manager()
+            if usb_manager is None:
+                raise RuntimeError("Could not get UsbManager")
+
             result = usb_manager.hasPermission(device)
             print(f"[USB] hasPermission({device_name}) = {result}", flush=True)
             return result
         except Exception as e:
-            print(f"[USB] hasPermission pyjnius failed: {e}", flush=True)
+            print(f"[USB] hasPermission pyjnius failed: {type(e).__name__}: {e}", flush=True)
             # Fall back to usb4a
             try:
                 from usb4a import usb
@@ -384,7 +437,7 @@ class NChorderDevice:
                 print(f"[USB] hasPermission usb4a fallback = {result}", flush=True)
                 return result
             except Exception as e2:
-                print(f"[USB] hasPermission usb4a fallback failed: {e2}", flush=True)
+                print(f"[USB] hasPermission usb4a fallback failed: {type(e2).__name__}: {e2}", flush=True)
                 return False
 
     @classmethod
@@ -408,28 +461,40 @@ class NChorderDevice:
 
             device = usb.get_usb_device(device_name)
             if device is None:
+                print(f"[USB] requestPermission: device {device_name} not found", flush=True)
                 return False
 
-            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            Context = autoclass('android.content.Context')
+            usb_manager, context = cls._get_usb_manager()
+            if usb_manager is None:
+                print("[USB] requestPermission: could not get UsbManager", flush=True)
+                return False
+
+            # Check if already permitted (avoid redundant dialogs)
+            if usb_manager.hasPermission(device):
+                print(f"[USB] requestPermission: already permitted for {device_name}", flush=True)
+                return True
+
             Intent = autoclass('android.content.Intent')
             PendingIntent = autoclass('android.app.PendingIntent')
-
-            context = PythonActivity.mActivity
-            usb_manager = context.getSystemService(Context.USB_SERVICE)
 
             intent = Intent('org.nchorder.USB_PERMISSION')
             intent.setPackage(context.getPackageName())
 
             # FLAG_MUTABLE (1 << 25) so system can add EXTRA_PERMISSION_GRANTED
+            FLAG_MUTABLE = 1 << 25
             pintent = PendingIntent.getBroadcast(
-                context, 0, intent, 1 << 25
+                context, 0, intent, FLAG_MUTABLE
             )
+
+            print(f"[USB] calling requestPermission for {device_name} "
+                  f"(pkg={context.getPackageName()})", flush=True)
             usb_manager.requestPermission(device, pintent)
-            print(f"[USB] requestPermission called for {device_name}", flush=True)
+            print(f"[USB] requestPermission call completed for {device_name}", flush=True)
             return True
         except Exception as e:
-            print(f"[USB] requestPermission failed: {e}", flush=True)
+            print(f"[USB] requestPermission failed: {type(e).__name__}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             return False
 
     def connect(self, timeout: float = 1.0) -> bool:
@@ -461,15 +526,19 @@ class NChorderDevice:
                 from usb4a import usb
                 device = usb.get_usb_device(port)
                 if device is None:
+                    print(f"[USB] connect: get_usb_device({port}) returned None", flush=True)
                     return False
+                print(f"[USB] connect: opening serial port {port}", flush=True)
                 self._serial = usb_serial.get_serial_port(
                     port,
                     baudrate=115200,
                     timeout=timeout
                 )
                 if self._serial is None:
+                    print(f"[USB] connect: get_serial_port returned None", flush=True)
                     return False
                 self._serial.open()
+                print(f"[USB] connect: serial port opened", flush=True)
             else:
                 # Desktop pyserial
                 self._serial = serial.Serial(
@@ -480,7 +549,9 @@ class NChorderDevice:
                 )
             self._port_path = port
             return True
-        except Exception:
+        except Exception as e:
+            print(f"[USB] connect failed: {type(e).__name__}: {e}", flush=True)
+            self._serial = None
             return False
 
     def disconnect(self) -> None:
