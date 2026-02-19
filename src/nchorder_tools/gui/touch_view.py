@@ -19,6 +19,7 @@ from kivy.properties import (
 )
 from kivy.clock import Clock
 from kivy.core.text import Label as CoreLabel
+from kivy.metrics import sp
 
 from ..cdc_client import TouchFrame
 
@@ -305,12 +306,12 @@ class TwiddlerButtonGrid(Widget):
                         if len(text) > 3:
                             text = text[:3]
                         color = (0.4, 0.9, 0.4, 1)  # Green for hints
-                        font_size = 12
+                        font_size = sp(16)
                     else:
                         # Show button name
                         text = btn_name
                         color = (1, 1, 1, 1) if is_pressed else (0.5, 0.5, 0.5, 1)
-                        font_size = 10
+                        font_size = sp(14)
 
                     # Render text
                     label = CoreLabel(text=text, font_size=font_size, bold=is_pressed)
@@ -332,7 +333,7 @@ class GPIODiagnostics(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
         self.size_hint_y = None
-        self.height = 100
+        self.height = 160
         self.padding = 5
         self.spacing = 2
 
@@ -340,8 +341,8 @@ class GPIODiagnostics(BoxLayout):
         title = Label(
             text='[GPIO Debug]',
             size_hint_y=None,
-            height=20,
-            font_size='12sp',
+            height=28,
+            font_size='16sp',
             color=(0.7, 0.7, 0.2, 1)
         )
         self.add_widget(title)
@@ -352,8 +353,8 @@ class GPIODiagnostics(BoxLayout):
             lbl = Label(
                 text=f'{key}: ---',
                 size_hint_y=None,
-                height=14,
-                font_size='11sp',
+                height=22,
+                font_size='14sp',
                 halign='left',
                 color=(0.6, 0.6, 0.6, 1)
             )
@@ -394,7 +395,7 @@ class ChordDisplay(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = 'horizontal'
         self.size_hint_y = None
-        self.height = 50
+        self.height = 60
         self.padding = 10
         self.spacing = 10
 
@@ -402,7 +403,7 @@ class ChordDisplay(BoxLayout):
             text='Chord: (none)',
             size_hint_x=0.5,
             halign='left',
-            font_size='16sp'
+            font_size='20sp'
         )
         self.chord_label.bind(size=self.chord_label.setter('text_size'))
 
@@ -410,7 +411,7 @@ class ChordDisplay(BoxLayout):
             text='Output: -',
             size_hint_x=0.5,
             halign='left',
-            font_size='16sp',
+            font_size='20sp',
             bold=True
         )
         self.output_label.bind(size=self.output_label.setter('text_size'))
@@ -458,10 +459,10 @@ class ChordTableRow(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = 'horizontal'
         self.size_hint_y = None
-        self.height = 30 if not is_header else 35
+        self.height = 36 if not is_header else 40
         self.padding = [5, 2]
 
-        font_size = '14sp' if not is_header else '15sp'
+        font_size = '16sp' if not is_header else '18sp'
         bold = is_header
 
         chord_lbl = Label(
