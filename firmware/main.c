@@ -2269,10 +2269,51 @@ static void power_management_init(void)
  */
 static void send_mouse_report(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel)
 {
+    // Try USB Mouse first (True HID)
+    if (nchorder_usb_is_connected() && nchorder_mouse_is_ready())
+    {
+        NRF_LOG_DEBUG("USB Mouse: buttons=0x%02X dx=%d dy=%d wheel=%d", buttons, dx, dy, wheel);
+
+        // Handle movement (though usually 0 for chords)
+        if (dx != 0 || dy != 0)
+        {
+            nchorder_mouse_move(dx, dy);
+        }
+
+        // Handle scroll
+        if (wheel != 0)
+        {
+            nchorder_mouse_scroll(wheel);
+        }
+
+        // Handle clicks (atomic press+release)
+        // Bit 0=Left, Bit 1=Right, Bit 2=Middle
+        if (buttons & 0x01)
+        {
+            nchorder_mouse_button(0, true);
+            nrf_delay_ms(10);
+            nchorder_mouse_button(0, false);
+        }
+        if (buttons & 0x02)
+        {
+            nchorder_mouse_button(1, true);
+            nrf_delay_ms(10);
+            nchorder_mouse_button(1, false);
+        }
+        if (buttons & 0x04)
+        {
+            nchorder_mouse_button(2, true);
+            nrf_delay_ms(10);
+            nchorder_mouse_button(2, false);
+        }
+        return;
+    }
+
+    // BLE Fallback: Map mouse buttons to keyboard keys
+    // (until BLE HID Mouse service is implemented)
     UNUSED_PARAMETER(dx);
     UNUSED_PARAMETER(dy);
 
-    // Map mouse buttons to keyboard keys as a workaround
     if (buttons & 0x01)  // Left button -> Enter
     {
         NRF_LOG_DEBUG("Mouse: Left click -> Enter");

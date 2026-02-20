@@ -9,7 +9,8 @@ Open-source BLE/USB HID keyboard firmware for nRF52840-based chorded keyboards.
 - **Config File Loading**: v7 format configs loaded from flash (FDS)
 - **Multi-character Macros**: String output with timed keystroke sequences
 - **Chord Detection**: 16-button state machine with debouncing
-- **Mouse Chord Support**: Mouse actions mapped to keyboard keys (workaround)
+- **Mouse Chord Support**: True mouse actions via USB, mapped to keys for BLE
+- **Consumer Control**: Media keys (BLE only)
 
 ## Hardware
 
@@ -104,9 +105,9 @@ sudo evtest /dev/input/eventX  # Select keyboard device
 
 ## Not Yet Implemented
 
-- **Consumer Control**: Media keys (volume, play/pause)
+- **Consumer Control (USB)**: Media keys (volume, play/pause) over USB
 - **RGB LEDs**: WS2812 status indicators via I2S
-- **True Mouse HID**: Actual mouse reports (currently mapped to keys)
+- **True Mouse HID (BLE)**: Actual mouse reports over BLE (currently mapped to keys)
 - **Optical Sensor**: Motion sensor support (unidentified chip)
 - **System Chords**: Config switching, sleep mode
 

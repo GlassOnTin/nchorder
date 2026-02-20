@@ -223,13 +223,41 @@ def generate_common_chords() -> list[int]:
     return chords
 
 
+# Mouse function codes (high byte when event type = 0x01)
+MOUSE_TOGGLE = 0x01
+MOUSE_LEFT = 0x02
+MOUSE_SCROLL = 0x04
+MOUSE_SPEED_DEC = 0x05
+MOUSE_SPEED_CYC = 0x06
+MOUSE_MIDDLE = 0x0A
+MOUSE_SPEED_INC = 0x0B
+MOUSE_RIGHT = 0x0C
+
+
 def hid_to_tutor_key(hid_code: int, modifier: int) -> Optional[str]:
     """Convert HID keycode and modifier to Tutor key string.
 
-    Returns None for system/mouse chords that shouldn't be exported.
+    Returns None for system chords that shouldn't be exported.
     """
-    # Skip system chords (modifier low byte 0x01 or 0x07)
-    if (modifier & 0xFF) in (0x01, 0x07):
+    event_type = modifier & 0xFF
+
+    # Handle Mouse events (0x01)
+    if event_type == 0x01:
+        func = (modifier >> 8) & 0xFF
+        if func == MOUSE_LEFT:
+            return '<MouseLeft>'
+        if func == MOUSE_RIGHT:
+            return '<MouseRight>'
+        if func == MOUSE_MIDDLE:
+            return '<MouseMiddle>'
+        if func == MOUSE_TOGGLE:
+            return '<MouseToggle>'
+        if func == MOUSE_SCROLL:
+            return '<MouseScroll>'
+        return f'<Mouse:{func:02X}>'
+
+    # Skip system chords (modifier low byte 0x07)
+    if event_type == 0x07:
         return None
 
     # Multi-character chords

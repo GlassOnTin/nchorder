@@ -202,10 +202,17 @@ class TestHidToTutorKey:
 
     def test_system_chord_skipped(self):
         """System chords return None."""
-        # Modifier low byte 0x01 = mouse
-        assert hid_to_tutor_key(0x04, 0x0001) is None
         # Modifier low byte 0x07 = system function
         assert hid_to_tutor_key(0x04, 0x0007) is None
+
+    def test_mouse_chord(self):
+        """Mouse chords return descriptive strings."""
+        # 0x0201 = Mouse Left (0x02 << 8 | 0x01)
+        assert hid_to_tutor_key(0, 0x0201) == '<MouseLeft>'
+        # 0x0C01 = Mouse Right
+        assert hid_to_tutor_key(0, 0x0C01) == '<MouseRight>'
+        # Generic/unknown mouse function
+        assert hid_to_tutor_key(0, 0x0001) == '<Mouse:00>'
 
     def test_multi_char_skipped(self):
         """Multi-char chords return None."""

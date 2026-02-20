@@ -66,7 +66,7 @@ This project provides:
 | Multi-character macros | Working |
 | Chord detection (16 buttons) | Working |
 | Python tools (79 tests) | Working |
-| Consumer control (media keys) | Not implemented |
+| Consumer control (media keys) | BLE only |
 | RGB LEDs | Working |
 | Optical sensor (mouse) | Working |
 
