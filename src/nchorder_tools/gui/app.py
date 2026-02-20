@@ -618,8 +618,12 @@ class MainLayout(BoxLayout):
             print(f"[SAVE] after stop, connected={self.device.is_connected() if self.device else False}", flush=True)
             if reset:
                 self.device.reset_defaults()
-                from kivy.clock import Clock
-                Clock.schedule_once(lambda dt: self.config_panel.load_from_device(), 0)
+                time.sleep(0.1)
+                # Read config while stream is still stopped (avoids race)
+                config = self.device.get_config()
+                if config:
+                    from kivy.clock import Clock
+                    Clock.schedule_once(lambda dt: self._apply_config_to_sliders(config), 0)
             else:
                 self.config_panel._flush_pending_config()
                 self.device.save_to_flash()
@@ -628,6 +632,17 @@ class MainLayout(BoxLayout):
                 ok = self._start_stream()
                 print(f"[SAVE] stream restarted={ok}", flush=True)
         threading.Thread(target=_do, daemon=True).start()
+
+    def _apply_config_to_sliders(self, config):
+        """Update slider values from a DeviceConfig (must be called on main thread)."""
+        panel = self.config_panel
+        panel.sliders['threshold_press'].value = config.threshold_press
+        panel.sliders['threshold_release'].value = config.threshold_release
+        panel.sliders['debounce_ms'].value = config.debounce_ms
+        panel.sliders['poll_rate_ms'].value = config.poll_rate_ms
+        panel.sliders['mouse_speed'].value = config.mouse_speed
+        panel.sliders['mouse_accel'].value = config.mouse_accel
+        panel.sliders['volume_sensitivity'].value = config.volume_sensitivity
 
     def _upload_with_stream_restart(self, config_data, status_label):
         """Upload config, stopping/restarting stream around it."""
