@@ -17,7 +17,7 @@ from kivy.uix.button import Button
 from kivy.graphics import Color, Rectangle, RoundedRectangle, Line
 from kivy.properties import ObjectProperty, NumericProperty, ListProperty, StringProperty
 from kivy.core.text import Label as CoreLabel
-from kivy.metrics import dp
+from kivy.metrics import dp, sp
 
 from .chord_view import ChordConfig, ChordEntry, BTN_BITS, BTN_NAMES
 
@@ -251,13 +251,13 @@ class CompressedChordCard(Widget):
                     # Show base button name
                     text = self.base_button
                     color = self.COLOR_TEXT
-                    font_size = 10
+                    font_size = sp(14)
                 elif btn_name in self.chord_map:
                     # Parse the key output for symbol and modifiers
                     raw_key = self.chord_map[btn_name]
                     text, has_shift, has_alt, has_ctrl = parse_key_output(raw_key)
                     color = self._get_modifier_color(has_shift, has_alt, has_ctrl)
-                    font_size = 14 if len(text) <= 2 else 10
+                    font_size = sp(18) if len(text) <= 2 else sp(14)
                 else:
                     continue
 
@@ -385,7 +385,7 @@ class CheatSheetGrid(ScrollView):
                 text=f'{base_button} ({len(chord_map)} chords)',
                 size_hint_y=None,
                 height=label_height,
-                font_size='11sp',
+                font_size='14sp',
                 color=(0.7, 0.7, 0.7, 1)
             )
             card_box.add_widget(label)
@@ -487,8 +487,8 @@ class CheatSheetView(BoxLayout):
         self.status_label = Label(
             text='Load a config to view cheat sheet',
             size_hint_y=None,
-            height=dp(22),
-            font_size='11sp'
+            height=dp(28),
+            font_size='14sp'
         )
         self.add_widget(self.status_label)
 
