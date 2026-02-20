@@ -11,6 +11,8 @@ Typing tutor for chord keyboards that:
 import random
 import time
 
+from nchorder_tools.wordlist import WORD_LIST
+
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
@@ -562,6 +564,9 @@ class ExerciseView(BoxLayout):
         self._varying_row = None  # Which row varies
         self._kb_mode = False  # QWERTY keyboard chord input mode
         self._kb_buttons = 0   # Current keyboard-simulated button bitmask
+        self._all_learned_chars = set()  # Accumulated learned chars across combos
+        self._word_round_pending = False  # Word round queued after combo mastery
+        self._is_word_round = False  # Currently in a word practice round
 
         # Toolbar
         toolbar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(48), spacing=dp(8))
@@ -715,6 +720,24 @@ class ExerciseView(BoxLayout):
         from itertools import product
         return [''.join(p) for p in product(chars, repeat=combo_length)]
 
+    def _get_words_for_chars(self, chars: set) -> list:
+        """Filter WORD_LIST to words using only the given character set."""
+        return [w for w in WORD_LIST if set(w) <= chars]
+
+    def _generate_word_round(self, chars: set) -> str:
+        """Generate a word practice round from learned chars.
+
+        Returns a string of 10-15 words joined by space (if space is learned)
+        or concatenated. Returns empty string if fewer than 5 words available.
+        """
+        words = self._get_words_for_chars(chars)
+        if len(words) < 5:
+            return ''
+        count = min(random.randint(10, 15), len(words))
+        selected = random.sample(words, count)
+        separator = ' ' if ' ' in chars else ''
+        return separator.join(selected)
+
     def _get_next_target(self) -> str:
         """Get the next target string from the permutation queue."""
         if not self._current_chars:
@@ -732,6 +755,7 @@ class ExerciseView(BoxLayout):
 
     def _on_lesson_changed(self, spinner, text):
         """Lesson spinner changed - rebuild chars dropdown"""
+        self._all_learned_chars = set()
         self._update_chars_spinner()
         if self._is_running:
             self._reset_exercise()
@@ -830,6 +854,8 @@ class ExerciseView(BoxLayout):
         self._total_typed = 0
         self._prev_buttons = 0
         self._is_running = False
+        self._word_round_pending = False
+        self._is_word_round = False
 
         # Show target text so user can see what to type
         self.display.target_text = self._target_text
@@ -904,6 +930,10 @@ class ExerciseView(BoxLayout):
 
         # Reset keyboard chord state
         self._kb_buttons = 0
+
+        # Reset word round state
+        self._word_round_pending = False
+        self._is_word_round = False
 
     def _on_hint_toggle(self, instance, state):
         """Toggle always-show-hint mode"""
@@ -1155,9 +1185,46 @@ class ExerciseView(BoxLayout):
         self._completed_count += 1
         accuracy = self.stats.accuracy
 
+        # Finishing a word round — don't try to advance (already advanced before word round)
+        was_word_round = self._is_word_round
+        if self._is_word_round:
+            self._is_word_round = False
+            if accuracy < 80:
+                # Repeat word round on low accuracy
+                self._word_round_pending = True
+            # Fall through to generate next permutation round (or another word round)
+
         advanced = False
-        if accuracy >= 90:
+        if not was_word_round and accuracy >= 90:
             advanced = self._try_advance()
+
+        # Intercept: serve a word round if one is pending
+        if self._word_round_pending:
+            word_text = self._generate_word_round(self._all_learned_chars)
+            if word_text:
+                self._word_round_pending = False
+                self._is_word_round = True
+                self._target_text = word_text
+                self._total_chars = len(self._target_text)
+                self._typed_text = ''
+                self._cursor_pos = 0
+                self._correct_count = 0
+                self._total_typed = 0
+
+                self.display.target_text = self._target_text
+                self.display.typed_text = ''
+                self.display.cursor_pos = 0
+
+                n_chars = len(self._all_learned_chars)
+                self.status_label.text = f"Word practice! ({n_chars} chars learned)"
+
+                self.stats.progress_current = 0
+                self.stats.progress_total = self._total_chars
+                self.stats.accuracy = 100
+
+                if self._always_show_hint and self._target_text:
+                    self._show_chord_hint(self._target_text[0])
+                return
 
         # Generate new shuffled set for next round
         perms = self._generate_permutations(self._current_chars)
@@ -1216,7 +1283,13 @@ class ExerciseView(BoxLayout):
             self.subset_spinner.text = str(len(self._current_chars))
             return True
 
-        # All chars in current combo mastered - move to next combo in dropdown
+        # All chars in current combo mastered - accumulate and check for word round
+        self._all_learned_chars.update(self._current_chars)
+        word_text = self._generate_word_round(self._all_learned_chars)
+        if word_text:
+            self._word_round_pending = True
+
+        # Move to next combo in dropdown
         values = self.chars_spinner.values
         if values:
             current_idx = values.index(self.chars_spinner.text) if self.chars_spinner.text in values else -1
